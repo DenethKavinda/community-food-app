@@ -5,9 +5,9 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <Stack screenOptions={{ headerShown: false }}>
-        {/* Only declare static top-level routes */}
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(bank)" />
       </Stack>
     </AuthProvider>
   );
