@@ -24,6 +24,10 @@ export default function DonorBottomNav({ initialTab = "Home", onTabChange }) {
         router.push("/(donor)");
       } else if (tabId === "Donate") {
         router.push("/(donor)/donate");
+      } else if (tabId === "History") {
+        router.push("/(donor)/history");
+      } else if (tabId === "Profile") {
+        router.push("/(donor)/profile");
       } else {
         console.log(`Tab pressed: ${tabId}`);
       }

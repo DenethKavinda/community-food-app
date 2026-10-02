@@ -2,7 +2,11 @@ import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
+import { useRouter } from "expo-router";
+
 export default function DonorHeader({ title = "Donor Dashboard", onNotificationPress, onProfilePress }) {
+  const router = useRouter();
+
   return (
     <View style={styles.container}>
       <View style={styles.leftSection}>
@@ -23,7 +27,7 @@ export default function DonorHeader({ title = "Donor Dashboard", onNotificationP
 
         <TouchableOpacity
           style={styles.profileBadge}
-          onPress={onProfilePress || (() => console.log("Profile icon pressed"))}
+          onPress={onProfilePress || (() => router.push("/(donor)/profile"))}
           activeOpacity={0.7}
         >
           <Ionicons name="person" size={16} color="#FFFFFF" />
