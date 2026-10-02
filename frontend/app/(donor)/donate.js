@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
+import DonationSuccess from "../../components/donor/DonationSuccess";
 
 export default function DonateFoodScreen() {
   const router = useRouter();
@@ -28,6 +29,7 @@ export default function DonateFoodScreen() {
   const [notes, setNotes] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
   // Mock Image Picker
   const handleSelectImage = () => {
@@ -43,26 +45,27 @@ export default function DonateFoodScreen() {
 
   // Form Submission Handler
   const handleSubmit = () => {
-    if (!mealName.trim()) {
-      Alert.alert("Missing Meal Name", "Please enter the food or meal name.");
-      return;
-    }
-
     setIsSubmitting(true);
     setTimeout(() => {
       setIsSubmitting(false);
-      Alert.alert(
-        "Donation Registered! 🎉",
-        "Your meal donation has been successfully submitted and routed to nearby community kitchens.",
-        [
-          {
-            text: "Back to Dashboard",
-            onPress: () => router.push("/(donor)"),
-          },
-        ]
-      );
-    }, 600);
+      setIsSubmitted(true);
+    }, 400);
   };
+
+  if (isSubmitted) {
+    return (
+      <DonationSuccess
+        donationId="#FD00123"
+        postedDate={new Date().toISOString().split("T")[0]}
+        mealName={mealName.trim() || "Fresh Artisan Bread & Pastries"}
+        quantity={quantity.trim() || "~12 kg"}
+        expiryWindow={expiryWindow || "Today, 5:00 PM – 7:30 PM"}
+        image={selectedImage || "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=300&q=80"}
+        onBackToDashboard={() => router.push("/(donor)")}
+        onViewDonation={() => setIsSubmitted(false)}
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
