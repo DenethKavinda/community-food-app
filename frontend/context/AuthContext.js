@@ -28,23 +28,25 @@ export function AuthProvider({ children }) {
       // Redirect to login if unauthenticated
       router.replace("/(auth)/login");
     } else if (token && user) {
-      // Redirect to specific role dashboard if logged in
-      switch (user.role) {
-        case "DONOR":
-          router.replace("/(donor)");
-          break;
-        case "RECIPIENT":
-          router.replace("/(recipient)");
-          break;
-        case "FOOD_BANK":
-          router.replace("/(bank)");
-          break;
-        case "DRIVER":
-          router.replace("/(driver)");
-          break;
-        case "ADMIN":
-          router.replace("/(admin)");
-          break;
+      // Redirect to specific role dashboard if logged in, but only if they are on auth/root pages
+      if (!segments[0] || inAuthGroup) {
+        switch (user.role) {
+          case "DONOR":
+            router.replace("/(donor)");
+            break;
+          case "RECIPIENT":
+            router.replace("/(recipient)");
+            break;
+          case "FOOD_BANK":
+            router.replace("/(bank)");
+            break;
+          case "DRIVER":
+            router.replace("/(driver)");
+            break;
+          case "ADMIN":
+            router.replace("/(admin)");
+            break;
+        }
       }
     }
   }, [token, user, loading, segments]);
