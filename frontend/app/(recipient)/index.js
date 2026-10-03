@@ -223,7 +223,7 @@ export default function RecipientDashboard() {
           <HomeIcon active />
           <Text style={[styles.tabLabel, styles.tabLabelActive]}>Home</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.tabItem}>
+        <TouchableOpacity style={styles.tabItem} onPress={() => router.push("/(recipient)/my-requests")}>
           <HeartIcon />
           <Text style={styles.tabLabel}>My Requests</Text>
         </TouchableOpacity>

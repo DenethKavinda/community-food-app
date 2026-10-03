@@ -78,11 +78,17 @@ export default function ConfirmRequest() {
   const decrement = () => setPortions((p) => Math.max(p - 1, 1));
 
   const handleConfirm = () => {
-    Alert.alert(
-      "Request Submitted",
-      `Your request for ${portions} portion(s) of ${item.name} has been noted. Full CRUD support coming soon.`,
-      [{ text: "OK", onPress: () => router.back() }]
-    );
+    const today = new Date();
+    const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    
+    router.replace({
+      pathname: "/(recipient)/request-status",
+      params: {
+        id: item.id || "REQ00123",
+        name: item.name,
+        date: formattedDate
+      }
+    });
   };
 
   return (
