@@ -23,8 +23,9 @@ export function AuthProvider({ children }) {
     if (loading) return;
 
     const inAuthGroup = segments[0] === "(auth)";
+    const inDonorGroup = segments[0] === "(donor)";
 
-    if (!token && !inAuthGroup) {
+    if (!token && !inAuthGroup && !inDonorGroup) {
       // Redirect to login if unauthenticated
       router.replace("/(auth)/login");
     } else if (token && user) {
