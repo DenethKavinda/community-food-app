@@ -18,6 +18,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(bank)" />
+        <Stack.Screen name="(recipient)" />
       </Stack>
     </AuthProvider>
   );
