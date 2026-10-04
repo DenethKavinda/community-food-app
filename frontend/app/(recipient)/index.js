@@ -110,6 +110,9 @@ export default function RecipientDashboard() {
         <Text style={styles.headerTitle}>Recipient Dashboard</Text>
 
         <View style={styles.headerRight}>
+          <Text style={styles.userName} numberOfLines={1}>
+            {user?.name ?? "Recipient"}
+          </Text>
           <TouchableOpacity style={styles.headerIconBtn}>
             <PersonIcon />
           </TouchableOpacity>
@@ -314,6 +317,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+  },
+  userName: {
+    maxWidth: 105,
+    fontSize: 12,
+    fontWeight: "700",
+    color: TEXT_PRIMARY,
   },
   headerIconBtn: {
     padding: 4,
