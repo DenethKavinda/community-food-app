@@ -1,31 +1,55 @@
-import React, { useContext } from "react";
-import { View, Text, StyleSheet, Button } from "react-native";
-import { AuthContext } from "../../context/AuthContext";
+import React from "react";
+import { View, StyleSheet, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+
+import DonorHeader from "../../components/donor/DonorHeader";
+import DonorGreeting from "../../components/donor/DonorGreeting";
+import DonationPromoCard from "../../components/donor/DonationPromoCard";
+import QuickActions from "../../components/donor/QuickActions";
+import RecentDonations from "../../components/donor/RecentDonations";
+import MotivationCard from "../../components/donor/MotivationCard";
+import DonorBottomNav from "../../components/donor/DonorBottomNav";
+
+import { useRouter } from "expo-router";
 
 export default function DonorDashboard() {
-  const { user, logout } = useContext(AuthContext);
+  const router = useRouter();
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Donor Dashboard</Text>
-      <Text style={styles.welcome}>Welcome, {user?.name}</Text>
-      <Button title="Logout" color="#d32f2f" onPress={logout} />
-    </View>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+      <StatusBar style="dark" />
+      <DonorHeader />
+      <View style={styles.mainContent}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <DonorGreeting />
+          <DonationPromoCard onPress={() => router.push("/(donor)/donate")} />
+          <QuickActions
+            onDonateFoodPress={() => router.push("/(donor)/donate")}
+            onViewHistoryPress={() => router.push("/(donor)/history")}
+          />
+          <RecentDonations onSeeAllPress={() => router.push("/(donor)/history")} />
+          <MotivationCard onPress={() => router.push("/(donor)/donate")} />
+        </ScrollView>
+        <DonorBottomNav initialTab="Home" />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#e8f5e9",
+    backgroundColor: "#FFFFFF",
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 10,
-    color: "#2e7d32",
+  mainContent: {
+    flex: 1,
+    backgroundColor: "#F7F8F7",
   },
-  welcome: { fontSize: 16, marginBottom: 20 },
+  scrollContent: {
+    paddingBottom: 20,
+  },
 });
