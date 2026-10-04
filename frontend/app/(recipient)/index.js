@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,34 +13,11 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { AuthContext } from "../../context/AuthContext";
+// TODO: Uncomment the import below when the backend endpoint is ready.
+// import { fetchAvailableFoods } from "../../services/recipientService";
 
-// ── Dummy data ────────────────────────────────────────────────────────────────
-const DUMMY_FOOD = [
-  {
-    id: "1",
-    name: "Rice & Curry",
-    quantity: "20 portions",
-    donor: "ABC Restaurant",
-    location: "Colombo",
-    distance: "1.2 km away",
-    time: "Today, 11:30 AM",
-    category: "Prepared Food",
-    image: null,
-    color: "#f5e6d3",
-  },
-  {
-    id: "2",
-    name: "Bread",
-    quantity: "30 packs",
-    donor: "XYZ Bakery",
-    location: "Malabe",
-    distance: "2.4 km away",
-    time: "Today, 12:00 PM",
-    category: "Bakery",
-    image: null,
-    color: "#fdf3e3",
-  },
-];
+// ── Food data is fetched from the backend API ─────────────────────────────────
+// (DUMMY_FOOD removed – data will come from /api/recipient/foods)
 
 // ── Icons (pure SVG-free, emoji-free approach using Text characters) ───────────
 const SearchIcon = () => (
@@ -96,8 +73,19 @@ export default function RecipientDashboard() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [foods, setFoods] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const filteredFood = DUMMY_FOOD.filter((item) => {
+  useEffect(() => {
+    // TODO: Uncomment the lines below once the backend endpoint is ready.
+    // setLoading(true);
+    // fetchAvailableFoods()
+    //   .then((data) => setFoods(data))
+    //   .catch((err) => console.error("Failed to fetch foods:", err))
+    //   .finally(() => setLoading(false));
+  }, []);
+
+  const filteredFood = foods.filter((item) => {
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.donor.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -194,7 +182,11 @@ export default function RecipientDashboard() {
         </ScrollView>
 
         {/* ── Food Cards ── */}
-        {filteredFood.length === 0 ? (
+        {loading ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>Loading available food...</Text>
+          </View>
+        ) : filteredFood.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>No food listings found.</Text>
           </View>

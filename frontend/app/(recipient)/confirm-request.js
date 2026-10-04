@@ -24,22 +24,8 @@ const TEXT_SECONDARY = "#777";
 const TEXT_MUTED = "#aaa";
 const RADIUS = 12;
 
-// ── Dummy request data (replaced by real data later) ─────────────────────────
-const DUMMY_REQUEST = {
-  id: "1",
-  name: "Rice & Curry",
-  availablePortions: 10,
-  donor: "ABC Restaurant",
-  distance: "1.2 km away",
-  timeWindow: "Today, 11:30 AM – 12:30 PM",
-  color: "#f5e6d3",
-  emoji: "🍛",
-  recipientEntity: "Hope NGO Community Center",
-  deliveryAddress: "No. 45, Temple Road, Colombo 03",
-  contactPhone: "+94 77 987 8543",
-  estTime: "~25 – 35 mins",
-  serviceFee: "Free (Donation)",
-};
+// ── Donation data is passed via route params from the Dashboard ───────────────
+// (DUMMY_REQUEST removed – data comes from params.itemData passed by the Dashboard)
 
 // ── Small reusable components ─────────────────────────────────────────────────
 const BackIcon = () => <Text style={{ fontSize: 20, color: TEXT_PRIMARY }}>‹</Text>;
@@ -67,10 +53,27 @@ export default function ConfirmRequest() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // Merge dummy data with any params passed from the dashboard (future use)
-  const item = { ...DUMMY_REQUEST, ...(params.itemData ? JSON.parse(params.itemData) : {}) };
+  // Parse donation data sent from the Dashboard via router params
+  const rawItem = params.itemData ? JSON.parse(params.itemData) : {};
 
-  const [portions, setPortions] = useState(Math.min(10, item.availablePortions));
+  const item = {
+    id: rawItem.id ?? "",
+    name: rawItem.name ?? "",
+    availablePortions: rawItem.availablePortions ?? rawItem.quantity ?? 1,
+    donor: rawItem.donor ?? "",
+    distance: rawItem.distance ?? "",
+    timeWindow: rawItem.time ?? "",
+    color: rawItem.color ?? "#f0f0f0",
+    emoji: rawItem.emoji ?? "🥗",
+    // ── Fields below belong to the Request table (not yet available) ──
+    recipientEntity: "",
+    deliveryAddress: "",
+    contactPhone: "",
+    estTime: "—",
+    serviceFee: "Free (Donation)",
+  };
+
+  const [portions, setPortions] = useState(Math.min(1, item.availablePortions));
   const [fulfillment, setFulfillment] = useState("driver"); // 'driver' | 'pickup'
   const [notes, setNotes] = useState("");
 
@@ -84,7 +87,7 @@ export default function ConfirmRequest() {
     router.replace({
       pathname: "/(recipient)/request-status",
       params: {
-        id: item.id || "REQ00123",
+        id: item.id,
         name: item.name,
         date: formattedDate
       }

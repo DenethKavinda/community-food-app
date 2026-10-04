@@ -15,13 +15,14 @@ export default function RequestDetails() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
+  // Data comes entirely from route params (passed by my-requests.js)
   const item = {
-    id: params.id || "REQ00123",
-    name: params.name || "Rice & Curry",
-    portions: params.portions || "10 portions",
-    date: params.date || "2028-09-14",
-    time: params.time || "11:30 AM",
-    image: params.image || "https://images.unsplash.com/photo-1626804475297-41609ea266eb?auto=format&fit=crop&w=300&q=80"
+    id: params.id || "",
+    name: params.name || "",
+    portions: params.portions || "",
+    date: params.date || "",
+    time: params.time || "",
+    image: params.image || null,
   };
 
   return (
@@ -44,11 +45,15 @@ export default function RequestDetails() {
       >
         {/* Food Details Card */}
         <View style={styles.card}>
-          <Image 
-            source={{ uri: item.image }} 
-            style={styles.cardImage} 
-            contentFit="cover"
-          />
+          {item.image ? (
+            <Image
+              source={{ uri: item.image }}
+              style={styles.cardImage}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={[styles.cardImage, styles.cardImagePlaceholder]} />
+          )}
           <View style={styles.cardInfo}>
             <Text style={styles.cardTitle}>{item.name}</Text>
             
@@ -219,6 +224,9 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 12,
     marginRight: 16,
+    backgroundColor: "#f0f0f0",
+  },
+  cardImagePlaceholder: {
     backgroundColor: "#f0f0f0",
   },
   cardInfo: {

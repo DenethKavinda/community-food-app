@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView, SafeAreaView, Platform, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+// TODO: Uncomment the import below when the Request API endpoint is ready.
+// import { fetchMyRequests } from '../../services/recipientService';
 
 const GREEN = "#2e7d32";
 const GREEN_LIGHT = "#e8f5e9";
@@ -11,44 +13,23 @@ const TEXT_SECONDARY = "#777";
 const BORDER = "#e8e8e8";
 const RADIUS = 14;
 
-// Dummy data mirroring the screenshot requirements
-const DUMMY_REQUESTS = [
-  {
-    id: "1",
-    name: "Rice & Curry",
-    portions: "10 portions",
-    distance: "1.2 km away",
-    time: "Today, 11:30 AM",
-    image: "https://images.unsplash.com/photo-1626804475297-41609ea266eb?auto=format&fit=crop&w=300&q=80",
-  },
-  {
-    id: "2",
-    name: "Sandwiches",
-    portions: "20 portions",
-    distance: "2.4 km away",
-    time: "Today, 12:00 PM",
-    image: "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=300&q=80",
-  },
-  {
-    id: "3",
-    name: "Fruits (Mixed)",
-    portions: "15 portions",
-    distance: "3.1 km away",
-    time: "Today, 02:00 PM",
-    image: "https://images.unsplash.com/photo-1543228900-b620021c1775?auto=format&fit=crop&w=300&q=80",
-  },
-  {
-    id: "4",
-    name: "Bread Packs",
-    portions: "12 portions",
-    distance: "4.0 km away",
-    time: "Today, 03:30 PM",
-    image: "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=300&q=80",
-  },
-];
+// ── Request data will come from the backend Request API ───────────────────────
+// (DUMMY_REQUESTS removed – data will come from /api/recipient/my-requests)
 
 export default function MyRequests() {
   const router = useRouter();
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // TODO: Uncomment the lines below once the Request API endpoint is ready.
+    // setLoading(true);
+    // fetchMyRequests()
+    //   .then((data) => setRequests(data))
+    //   .catch((err) => console.error('Failed to fetch requests:', err))
+    //   .finally(() => setLoading(false));
+  }, []);
+
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -69,9 +50,19 @@ export default function MyRequests() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {DUMMY_REQUESTS.map((item) => (
-          <RequestCard key={item.id} item={item} />
-        ))}
+        {loading ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>Loading your requests...</Text>
+          </View>
+        ) : requests.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No requests yet.</Text>
+          </View>
+        ) : (
+          requests.map((item) => (
+            <RequestCard key={item.id} item={item} />
+          ))
+        )}
       </ScrollView>
 
       {/* Bottom Tab Bar (dummy navigation logic) */}
@@ -174,6 +165,14 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 24,
     gap: 14,
+  },
+  emptyState: {
+    alignItems: 'center',
+    marginTop: 60,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: TEXT_SECONDARY,
   },
   card: {
     flexDirection: "row",

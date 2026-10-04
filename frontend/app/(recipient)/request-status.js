@@ -14,9 +14,10 @@ export default function RequestStatus() {
   const router = useRouter();
   const params = useLocalSearchParams();
   
-  const requestId = params.id || "REQ00123";
-  const foodItem = params.name || "Rice & Curry";
-  const requestDate = params.date || "2028-08-14";
+  // Data passed via route params from confirm-request.js after a successful submission
+  const requestId = params.id || "";
+  const foodItem = params.name || "";
+  const requestDate = params.date || "";
   const status = "Pending";
 
   return (
