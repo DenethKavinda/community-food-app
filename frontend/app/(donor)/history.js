@@ -57,15 +57,47 @@ const mockHistoryData = [
 export default function DonationHistoryScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Recent Posts");
+  const [donations, setDonations] = useState(mockHistoryData);
+  const [loading, setLoading] = useState(false);
 
   const avatarUrl =
     "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80";
 
+  React.useEffect(() => {
+    fetchDonations();
+  }, []);
+
+  const fetchDonations = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("http://localhost:5000/api/donations/my-donations?all=true");
+      const data = await response.json();
+      if (data.success && data.donations) {
+        const formatted = data.donations.map((item) => ({
+          id: String(item.id),
+          title: item.meal_name,
+          quantity: item.quantity,
+          location: item.location,
+          date: item.created_at ? item.created_at.split("T")[0] : "2026-10-04",
+          status: item.status || "Active",
+          image: item.image_url && item.image_url.startsWith("http") 
+            ? item.image_url 
+            : (item.image_url ? `http://localhost:5000${item.image_url}` : "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80"),
+        }));
+        setDonations(formatted);
+      }
+    } catch (err) {
+      console.warn("Backend fetch failed, using mock data:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filter items based on active tab if needed
   const displayedItems =
     activeTab === "Recent Posts"
-      ? mockHistoryData
-      : mockHistoryData.filter((item) => item.status === "Completed");
+      ? donations
+      : donations.filter((item) => item.status === "Completed");
 
   // Render status badge with exact screenshot styling & icons
   const renderStatusBadge = (status) => {

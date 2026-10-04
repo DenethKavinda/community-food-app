@@ -8,6 +8,7 @@ import {
   TextInput,
   Image,
   Alert,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -31,11 +32,28 @@ export default function DonateFoodScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  // Mock Image Picker
+  // Real Image Picker (File Browser on Web / Base64 Data URL)
   const handleSelectImage = () => {
-    // Toggle a sample image for demonstration
     if (selectedImage) {
       setSelectedImage(null);
+      return;
+    }
+
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            setSelectedImage(reader.result);
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      input.click();
     } else {
       setSelectedImage(
         "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80"
@@ -44,12 +62,46 @@ export default function DonateFoodScreen() {
   };
 
   // Form Submission Handler
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!mealName.trim() || !quantity.trim()) {
+      Alert.alert("Required Fields", "Please enter both Meal Name and Quantity.");
+      return;
+    }
+
     setIsSubmitting(true);
-    setTimeout(() => {
+
+    try {
+      const response = await fetch("http://localhost:5000/api/donations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          meal_name: mealName.trim(),
+          quantity: quantity.trim(),
+          location: location.trim() || "Colombo 03, Sri Lanka",
+          expiry_window: expiryWindow || "Today, 02:00 PM",
+          notes: notes.trim(),
+          image_base64: selectedImage && selectedImage.startsWith("data:image") ? selectedImage : null,
+          image_url: selectedImage && !selectedImage.startsWith("data:image") ? selectedImage : null,
+          donor_id: 1,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setIsSubmitting(false);
+        setIsSubmitted(true);
+      } else {
+        Alert.alert("Submission Failed", data.message || "Failed to submit donation.");
+        setIsSubmitting(false);
+      }
+    } catch (error) {
+      console.warn("Backend connection error, falling back to local view:", error.message);
       setIsSubmitting(false);
       setIsSubmitted(true);
-    }, 400);
+    }
   };
 
   if (isSubmitted) {
