@@ -28,24 +28,19 @@ export function AuthProvider({ children }) {
     if (!token && !inAuthGroup && !inDonorGroup) {
       // Redirect to login if unauthenticated
       router.replace("/(auth)/login");
-    } else if (token && user && (inAuthGroup || !segments.length || segments[0] === "index")) {
-      // Redirect to specific role dashboard only if on auth or root page
-      switch (user.role) {
-        case "DONOR":
-          router.replace("/(donor)");
-          break;
-        case "RECIPIENT":
-          router.replace("/(recipient)");
-          break;
-        case "FOOD_BANK":
-          router.replace("/(bank)");
-          break;
-        case "DRIVER":
-          router.replace("/(driver)");
-          break;
-        case "ADMIN":
-          router.replace("/(admin)");
-          break;
+    } else if (token && user) {
+      // Redirect to the role dashboard only when outside that role's route group.
+      const roleGroups = {
+        DONOR: "(donor)",
+        RECIPIENT: "(recipient)",
+        FOOD_BANK: "(bank)",
+        DRIVER: "(driver)",
+        ADMIN: "(admin)",
+      };
+      const roleGroup = roleGroups[user.role];
+
+      if (roleGroup && segments[0] !== roleGroup) {
+        router.replace(`/${roleGroup}`);
       }
     }
   }, [token, user, loading, segments]);

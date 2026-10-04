@@ -1011,10 +1011,7 @@ const styles = StyleSheet.create({
     borderRadius: 38,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
+    boxShadow: "0px 8px 16px rgba(74, 222, 128, 0.5)",
     elevation: 10,
   },
   title: {
@@ -1115,10 +1112,7 @@ const styles = StyleSheet.create({
   btnShadow: {
     borderRadius: 16,
     backgroundColor: "#22c55e",
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
+    boxShadow: "0px 8px 16px rgba(74, 222, 128, 0.45)",
     elevation: 8,
     marginTop: 6,
   },

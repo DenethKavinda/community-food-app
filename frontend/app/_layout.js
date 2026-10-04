@@ -1,5 +1,15 @@
+import React from "react";
 import { Stack } from "expo-router";
+import { LogBox, Platform } from "react-native";
 import { AuthProvider } from "../context/AuthContext";
+
+// Suppress React Native Web development warnings in the browser console
+if (Platform.OS === "web") {
+  LogBox.ignoreLogs([
+    "props.pointerEvents is deprecated",
+    "Animated: `useNativeDriver` is not supported",
+  ]);
+}
 
 export default function RootLayout() {
   return (
