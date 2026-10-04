@@ -122,7 +122,7 @@ export default function DonorProfileScreen() {
             {/* Edit Profile Button */}
             <TouchableOpacity
               style={styles.editProfileBtn}
-              onPress={() => Alert.alert("Edit Profile", "Open edit profile details.")}
+              onPress={() => router.push("/(donor)/edit-profile")}
               activeOpacity={0.8}
             >
               <Feather name="edit-2" size={14} color="#111827" style={{ marginRight: 6 }} />
@@ -229,7 +229,7 @@ export default function DonorProfileScreen() {
             {/* Menu Item 4: Food Safety & Guidelines */}
             <TouchableOpacity
               style={styles.menuItem}
-              onPress={() => Alert.alert("Food Safety", "Storage, expiry & hygiene guidelines.")}
+              onPress={() => router.push("/(donor)/guidelines")}
               activeOpacity={0.8}
             >
               <View style={styles.menuIconBox}>
