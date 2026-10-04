@@ -1,11 +1,14 @@
-import React from "react";
+import React, { useContext } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { useRouter } from "expo-router";
+import { AuthContext } from "../../context/AuthContext";
 
 export default function DonorHeader({ title = "Donor Dashboard", onNotificationPress, onProfilePress }) {
   const router = useRouter();
+  const { user, logout } = useContext(AuthContext);
+  const userName = user?.name || "Donor";
 
   return (
     <View style={styles.container}>
@@ -29,8 +32,20 @@ export default function DonorHeader({ title = "Donor Dashboard", onNotificationP
           style={styles.profileBadge}
           onPress={onProfilePress || (() => router.push("/(donor)/profile"))}
           activeOpacity={0.7}
+          accessibilityLabel={`Open ${userName}'s profile`}
         >
           <Ionicons name="person" size={16} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.userName} numberOfLines={1}>
+          {userName}
+        </Text>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={logout}
+          activeOpacity={0.7}
+          accessibilityLabel="Log out"
+        >
+          <Ionicons name="log-out-outline" size={20} color="#6B7280" />
         </TouchableOpacity>
       </View>
     </View>
@@ -82,5 +97,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#087A3D",
     alignItems: "center",
     justifyContent: "center",
+  },
+  userName: {
+    maxWidth: 105,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#374151",
+  },
+  logoutButton: {
+    padding: 5,
   },
 });
