@@ -7,6 +7,8 @@ export default function DonorLayout() {
       <Stack.Screen name="donate" />
       <Stack.Screen name="history" />
       <Stack.Screen name="profile" />
+      <Stack.Screen name="guidelines" />
+      <Stack.Screen name="edit-profile" />
     </Stack>
   );
 }
