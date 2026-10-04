@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView, SafeAreaView, Platform, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView, SafeAreaView, Platform, StatusBar, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -60,7 +60,27 @@ export default function MyRequests() {
           </View>
         ) : (
           requests.map((item) => (
-            <RequestCard key={item.id} item={item} />
+            <RequestCard
+              key={item.id}
+              item={item}
+              onCancel={(id) => {
+                Alert.alert(
+                  'Cancel Request',
+                  'Are you sure you want to cancel this request?',
+                  [
+                    { text: 'Keep Request', style: 'cancel' },
+                    {
+                      text: 'Cancel Request',
+                      style: 'destructive',
+                      onPress: () => {
+                        // TODO: Replace with DELETE /api/recipient/requests/:id when backend is ready.
+                        setRequests((prev) => prev.filter((r) => r.id !== id));
+                      },
+                    },
+                  ]
+                );
+              }}
+            />
           ))
         )}
       </ScrollView>
@@ -80,10 +100,11 @@ export default function MyRequests() {
   );
 }
 
-function RequestCard({ item }) {
+function RequestCard({ item, onCancel }) {
   const router = useRouter();
   const [cardHovered, setCardHovered] = useState(false);
   const [btnHovered, setBtnHovered] = useState(false);
+  const [cancelHovered, setCancelHovered] = useState(false);
 
   return (
     <View 
@@ -118,17 +139,31 @@ function RequestCard({ item }) {
         </View>
       </View>
 
-      <Pressable 
-        style={[
-          styles.viewBtn,
-          btnHovered && styles.viewBtnHovered
-        ]} 
-        onHoverIn={() => setBtnHovered(true)}
-        onHoverOut={() => setBtnHovered(false)}
-        onPress={() => router.push({ pathname: "/(recipient)/request-details", params: item })}
-      >
-        <Text style={styles.viewBtnText}>View</Text>
-      </Pressable>
+      <View style={styles.cardActions}>
+        <Pressable 
+          style={[
+            styles.viewBtn,
+            btnHovered && styles.viewBtnHovered
+          ]} 
+          onHoverIn={() => setBtnHovered(true)}
+          onHoverOut={() => setBtnHovered(false)}
+          onPress={() => router.push({ pathname: "/(recipient)/request-details", params: item })}
+        >
+          <Text style={styles.viewBtnText}>View</Text>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.cancelBtn,
+            cancelHovered && styles.cancelBtnHovered,
+          ]}
+          onHoverIn={() => setCancelHovered(true)}
+          onHoverOut={() => setCancelHovered(false)}
+          onPress={() => onCancel(item.id)}
+        >
+          <Text style={styles.cancelBtnText}>Cancel</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -234,13 +269,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: TEXT_SECONDARY,
   },
+  cardActions: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 6,
+    marginLeft: 8,
+  },
   viewBtn: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: GREEN,
-    marginLeft: 8,
   },
   viewBtnHovered: {
     backgroundColor: "#c8e6c9",
@@ -251,6 +291,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: GREEN,
+    textAlign: "center",
+  },
+  cancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e57373",
+    backgroundColor: "#fff5f5",
+  },
+  cancelBtnHovered: {
+    backgroundColor: "#ffcdd2",
+    borderColor: "#ef5350",
+  },
+  cancelBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#c62828",
+    textAlign: "center",
   },
   tabBar: {
     flexDirection: "row",
