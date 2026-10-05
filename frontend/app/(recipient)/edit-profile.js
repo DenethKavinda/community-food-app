@@ -90,10 +90,11 @@ export default function RecipientEditProfileScreen() {
           [
             {
               text: "OK",
-              onPress: () => router.back(),
+              onPress: () => router.replace("/(recipient)/profile"),
             },
           ]
         );
+        router.replace("/(recipient)/profile");
       } else {
         Alert.alert("Update Failed", response?.message || "Could not update profile.");
       }
