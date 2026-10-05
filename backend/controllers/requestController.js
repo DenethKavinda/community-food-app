@@ -61,7 +61,7 @@ exports.createRequest = async (req, res) => {
   try {
     // ── Check donation exists ─────────────────
     const [donations] = await pool.query(
-      "SELECT id, status FROM donations WHERE id = ?",
+      "SELECT id, status, quantity FROM donations WHERE id = ?",
       [donation_id]
     );
 
@@ -76,6 +76,30 @@ exports.createRequest = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "This donation is no longer available for requests.",
+      });
+    }
+
+    // ── Run Available Portions Validation ──
+    const [reservedReqs] = await pool.query(
+      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status IN ('Pending', 'Approved')",
+      [donation_id]
+    );
+
+    const originalQuantity = parseInt(donations[0].quantity) || 0;
+    const reservedPortions = parseInt(reservedReqs[0]?.reserved) || 0;
+    const availablePortions = Math.max(0, originalQuantity - reservedPortions);
+
+    if (availablePortions <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "This donation has no available portions remaining.",
+      });
+    }
+
+    if (Number(requested_portions) > availablePortions) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${availablePortions} portions are currently available.`,
       });
     }
 
@@ -139,7 +163,7 @@ exports.getMyRequests = async (req, res) => {
          r.contact_phone,
          r.special_instructions,
          r.status           AS request_status,
-         r.created_at,
+         r.requested_at,
          r.updated_at,
          d.meal_name,
          d.quantity         AS donation_quantity,
@@ -150,7 +174,7 @@ exports.getMyRequests = async (req, res) => {
        FROM requests r
        JOIN donations d ON r.donation_id = d.id
        WHERE r.recipient_id = ?
-       ORDER BY r.created_at DESC`,
+       ORDER BY r.requested_at DESC`,
       [recipient_id]
     );
 
@@ -193,7 +217,7 @@ exports.getRequestById = async (req, res) => {
          r.contact_phone,
          r.special_instructions,
          r.status           AS request_status,
-         r.created_at,
+         r.requested_at,
          r.updated_at,
          d.meal_name,
          d.quantity         AS donation_quantity,

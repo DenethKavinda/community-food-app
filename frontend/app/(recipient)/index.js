@@ -242,7 +242,9 @@ function FoodCard({ item, onView }) {
 
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle}>{item.meal_name}</Text>
-        <Text style={styles.cardQuantity}>{item.quantity}</Text>
+        <Text style={styles.cardQuantity}>
+          {item.available_portions !== undefined ? `${item.available_portions} available` : item.quantity}
+        </Text>
 
         <View style={styles.cardMeta}>
           <LocationIcon />
@@ -261,17 +263,23 @@ function FoodCard({ item, onView }) {
         </Text>
       </View>
 
-      <Pressable
-        style={[
-          styles.viewBtn,
-          btnHovered && styles.viewBtnHovered,
-        ]}
-        onHoverIn={() => setBtnHovered(true)}
-        onHoverOut={() => setBtnHovered(false)}
-        onPress={onView}
-      >
-        <Text style={styles.viewBtnText}>View</Text>
-      </Pressable>
+      {item.available_portions > 0 ? (
+        <Pressable
+          style={[
+            styles.viewBtn,
+            btnHovered && styles.viewBtnHovered,
+          ]}
+          onHoverIn={() => setBtnHovered(true)}
+          onHoverOut={() => setBtnHovered(false)}
+          onPress={onView}
+        >
+          <Text style={styles.viewBtnText}>View</Text>
+        </Pressable>
+      ) : (
+        <View style={[styles.viewBtn, { backgroundColor: '#e0e0e0', borderColor: '#ccc' }]}>
+          <Text style={[styles.viewBtnText, { color: '#888' }]}>Out of Stock</Text>
+        </View>
+      )}
     </View>
   );
 }

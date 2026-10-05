@@ -173,10 +173,31 @@ exports.getAvailableDonations = async (req, res) => {
       "SELECT * FROM donations WHERE status = 'Active' ORDER BY created_at DESC"
     );
 
+    // Fetch overlapping requests to calculate remaining available portions
+    const [requests] = await pool.query(
+      "SELECT donation_id, SUM(requested_portions) as reserved FROM requests WHERE status IN ('Pending', 'Approved') GROUP BY donation_id"
+    );
+
+    const reservedMap = {};
+    requests.forEach(r => {
+      reservedMap[r.donation_id] = parseInt(r.reserved) || 0;
+    });
+
+    const enrichedDonations = donations.map(d => {
+      const originalQuantity = parseInt(d.quantity) || 0;
+      const reserved = reservedMap[d.id] || 0;
+      const available_portions = Math.max(0, originalQuantity - reserved);
+      
+      return {
+        ...d,
+        available_portions
+      };
+    });
+
     res.json({
       success: true,
-      count: donations.length,
-      donations,
+      count: enrichedDonations.length,
+      donations: enrichedDonations,
     });
   } catch (error) {
     console.error("Get available donations error:", error);

@@ -3,8 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView, SafeAr
 import { useRouter } from 'expo-router';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-// TODO: Uncomment the import below when the Request API endpoint is ready.
-// import { fetchMyRequests } from '../../services/recipientService';
+import { fetchMyRequests, cancelRequest } from '../../services/recipientService';
 
 const GREEN = "#2e7d32";
 const GREEN_LIGHT = "#e8f5e9";
@@ -22,12 +21,15 @@ export default function MyRequests() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // TODO: Uncomment the lines below once the Request API endpoint is ready.
-    // setLoading(true);
-    // fetchMyRequests()
-    //   .then((data) => setRequests(data))
-    //   .catch((err) => console.error('Failed to fetch requests:', err))
-    //   .finally(() => setLoading(false));
+    setLoading(true);
+    fetchMyRequests()
+      .then((data) => {
+        const reqs = data.requests || [];
+        console.log('[my-requests] loaded requests:', JSON.stringify(reqs.map(r => ({ id: r.id, request_status: r.request_status, meal_name: r.meal_name }))));
+        setRequests(reqs);
+      })
+      .catch((err) => console.error('Failed to fetch requests:', err))
+      .finally(() => setLoading(false));
   }, []);
 
 
@@ -63,22 +65,16 @@ export default function MyRequests() {
             <RequestCard
               key={item.id}
               item={item}
-              onCancel={(id) => {
-                Alert.alert(
-                  'Cancel Request',
-                  'Are you sure you want to cancel this request?',
-                  [
-                    { text: 'Keep Request', style: 'cancel' },
-                    {
-                      text: 'Cancel Request',
-                      style: 'destructive',
-                      onPress: () => {
-                        // TODO: Replace with DELETE /api/recipient/requests/:id when backend is ready.
-                        setRequests((prev) => prev.filter((r) => r.id !== id));
-                      },
-                    },
-                  ]
-                );
+              onCancel={async (id) => {
+                console.log('[my-requests] onCancel called with id:', id);
+                try {
+                  const result = await cancelRequest(id);
+                  console.log('[my-requests] cancelRequest response:', JSON.stringify(result));
+                  setRequests(prev => prev.map(r => r.id === id ? { ...r, request_status: 'Cancelled' } : r));
+                } catch (error) {
+                  console.error('[my-requests] cancelRequest error:', error?.response?.status, error?.response?.data);
+                  Alert.alert("Error", error.response?.data?.message || "Failed to cancel the request. Please try again.");
+                }
               }}
             />
           ))
@@ -105,6 +101,45 @@ function RequestCard({ item, onCancel }) {
   const [cardHovered, setCardHovered] = useState(false);
   const [btnHovered, setBtnHovered] = useState(false);
   const [cancelHovered, setCancelHovered] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  // Debug: log what status this card sees so we can confirm the button guard
+  console.log(`[RequestCard] id=${item.id} request_status="${item.request_status}" showCancel=${item.request_status === 'Pending'}`);
+
+  const handleCancelPress = () => {
+    console.log('[RequestCard] handleCancelPress id:', item.id, 'request_status:', item.request_status);
+
+    if (Platform.OS === 'web') {
+      // Alert.alert() is a no-op on Expo Web — use the browser's native confirm dialog instead
+      const confirmed = window.confirm('Are you sure you want to cancel this request?');
+      if (confirmed) {
+        console.log('[RequestCard] Yes, Cancel pressed for id:', item.id);
+        setIsCancelling(true);
+        onCancel(item.id).finally(() => setIsCancelling(false));
+      }
+    } else {
+      Alert.alert(
+        'Cancel Request',
+        'Are you sure you want to cancel this request?',
+        [
+          { text: 'No', style: 'cancel' },
+          {
+            text: 'Yes, Cancel',
+            style: 'destructive',
+            onPress: async () => {
+              console.log('[RequestCard] Yes, Cancel pressed for id:', item.id);
+              setIsCancelling(true);
+              try {
+                await onCancel(item.id);
+              } finally {
+                setIsCancelling(false);
+              }
+            },
+          },
+        ]
+      );
+    }
+  };
 
   return (
     <View 
@@ -116,26 +151,26 @@ function RequestCard({ item, onCancel }) {
       onMouseLeave={() => setCardHovered(false)}
     >
       <Image 
-        source={{ uri: item.image }} 
+        source={{ uri: item.image_url || "https://images.unsplash.com/photo-1546833999-b9f581a1996d" }} 
         style={styles.cardImage} 
         contentFit="cover"
         transition={200}
       />
       
       <View style={styles.cardInfo}>
-        <Text style={styles.cardTitle}>{item.name}</Text>
+        <Text style={styles.cardTitle}>{item.meal_name}</Text>
         
         <View style={styles.portionBadge}>
-          <Text style={styles.portionText}>{item.portions}</Text>
+          <Text style={styles.portionText}>{item.requested_portions} portions</Text>
         </View>
         
         <View style={styles.metaRow}>
           <Feather name="map-pin" size={11} color={TEXT_SECONDARY} style={styles.metaIcon} />
-          <Text style={styles.metaText}>{item.distance}</Text>
+          <Text style={styles.metaText}>{item.donation_location}</Text>
         </View>
         <View style={styles.metaRow}>
           <Feather name="clock" size={11} color={TEXT_SECONDARY} style={styles.metaIcon} />
-          <Text style={styles.metaText}>{item.time}</Text>
+          <Text style={styles.metaText}>{item.expiry_window || item.request_status}</Text>
         </View>
       </View>
 
@@ -147,22 +182,28 @@ function RequestCard({ item, onCancel }) {
           ]} 
           onHoverIn={() => setBtnHovered(true)}
           onHoverOut={() => setBtnHovered(false)}
-          onPress={() => router.push({ pathname: "/(recipient)/request-details", params: item })}
+          onPress={() => router.push({ pathname: "/(recipient)/request-details", params: { id: item.id } })}
         >
           <Text style={styles.viewBtnText}>View</Text>
         </Pressable>
 
-        <Pressable
-          style={[
-            styles.cancelBtn,
-            cancelHovered && styles.cancelBtnHovered,
-          ]}
-          onHoverIn={() => setCancelHovered(true)}
-          onHoverOut={() => setCancelHovered(false)}
-          onPress={() => onCancel(item.id)}
-        >
-          <Text style={styles.cancelBtnText}>Cancel</Text>
-        </Pressable>
+        {(item.request_status === 'Pending' || item.request_status === 'pending') && (
+          <Pressable
+            style={[
+              styles.cancelBtn,
+              cancelHovered && styles.cancelBtnHovered,
+              isCancelling && { opacity: 0.6 }
+            ]}
+            disabled={isCancelling}
+            onHoverIn={() => setCancelHovered(true)}
+            onHoverOut={() => setCancelHovered(false)}
+            onPress={handleCancelPress}
+          >
+            <Text style={styles.cancelBtnText}>
+              {isCancelling ? 'Cancelling...' : 'Cancel'}
+            </Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
