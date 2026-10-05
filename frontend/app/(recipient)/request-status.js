@@ -1,7 +1,8 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, StatusBar } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, StatusBar, ActivityIndicator } from 'react-native';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { fetchRequestById } from '../../services/recipientService';
 
 const GREEN = "#2e7d32";
 const BTN_GREEN = "#0f7a55";
@@ -10,15 +11,53 @@ const TEXT_SECONDARY = "#777";
 const BORDER = "#e8e8e8";
 const RADIUS = 12;
 
+// Map raw DB status values to human-readable labels
+const STATUS_LABELS = {
+  Pending:   "Pending Approval",
+  Approved:  "Approved",
+  Rejected:  "Rejected",
+  Cancelled: "Cancelled",
+  Completed: "Completed",
+};
+
 export default function RequestStatus() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  
-  // Data passed via route params from confirm-request.js after a successful submission
-  const requestId = params.id || "";
-  const foodItem = params.name || "";
+
+  // These basic fields come from route params (set right after submit)
+  const requestId   = params.id   || "";
+  const foodItem    = params.name || "";
   const requestDate = params.date || "";
-  const status = "Pending";
+
+  // Real status is fetched from the backend
+  const [requestStatus, setRequestStatus] = useState("Pending");
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!requestId) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      fetchRequestById(requestId)
+        .then((data) => {
+          if (data?.request?.request_status) {
+            setRequestStatus(data.request.request_status);
+          }
+        })
+        .catch((err) => console.error("Failed to fetch request status:", err))
+        .finally(() => setLoading(false));
+    }, [requestId])
+  );
+
+  const statusLabel = STATUS_LABELS[requestStatus] || requestStatus;
+
+  // Derive icon and colour from actual status
+  const isCancelledOrRejected = requestStatus === "Cancelled" || requestStatus === "Rejected";
+  const iconName  = isCancelledOrRejected ? "x" : "check";
+  const iconColor = isCancelledOrRejected ? "#c62828" : GREEN;
+  const borderColor = isCancelledOrRejected ? "#e57373" : GREEN;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -26,7 +65,16 @@ export default function RequestStatus() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+        <TouchableOpacity 
+          style={styles.headerBtn} 
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(recipient)/my-requests");
+            }
+          }}
+        >
           <Feather name="chevron-left" size={24} color={TEXT_PRIMARY} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Request Status</Text>
@@ -34,25 +82,40 @@ export default function RequestStatus() {
       </View>
 
       <View style={styles.content}>
-        {/* Success Icon */}
+        {/* Status Icon */}
         <View style={styles.iconContainer}>
-          <View style={styles.iconCircle}>
-            <Feather name="check" size={36} color={GREEN} style={styles.checkIcon} />
+          <View style={[styles.iconCircle, { borderColor }]}>
+            {loading ? (
+              <ActivityIndicator size="small" color={GREEN} />
+            ) : (
+              <Feather name={iconName} size={36} color={iconColor} style={styles.checkIcon} />
+            )}
           </View>
         </View>
 
-        <Text style={styles.titleText}>Request Successful!</Text>
+        <Text style={styles.titleText}>
+          {isCancelledOrRejected ? `Request ${requestStatus}` : "Request Successful!"}
+        </Text>
         <Text style={styles.subtitleText}>
-          Your request has been sent to the donor.{"\n"}
-          You will be notified once it is confirmed.
+          {requestStatus === "Cancelled"
+            ? "Your request has been cancelled."
+            : requestStatus === "Rejected"
+            ? "Your request was rejected by the donor."
+            : "Your request has been sent to the donor.\nYou will be notified once it is confirmed."}
         </Text>
 
         {/* Info Card */}
         <View style={styles.card}>
           <InfoRow icon="file-text" label="Request ID" value={requestId} />
-          <InfoRow icon="box" label="Food Item" value={foodItem} />
-          <InfoRow icon="calendar" label="Request Date" value={requestDate} />
-          <InfoRow icon="clock" label="Status" value={status} isLast />
+          <InfoRow icon="box"       label="Food Item"  value={foodItem} />
+          <InfoRow icon="calendar"  label="Request Date" value={requestDate} />
+          <InfoRow
+            icon="clock"
+            label="Status"
+            value={loading ? "Loading..." : statusLabel}
+            statusColor={isCancelledOrRejected ? "#c62828" : GREEN}
+            isLast
+          />
         </View>
       </View>
 
@@ -67,15 +130,20 @@ export default function RequestStatus() {
   );
 }
 
-function InfoRow({ icon, label, value, isLast }) {
+function InfoRow({ icon, label, value, isLast, statusColor }) {
   return (
     <View style={[styles.infoRow, !isLast && styles.infoRowMargin]}>
       <View style={styles.infoRowLeft}>
-        <Feather name={icon} size={18} color={TEXT_SECONDARY} style={styles.rowIcon} />
+        <Feather name={icon} size={18} color="#a3a3a3" style={styles.rowIcon} />
         <Text style={styles.rowLabel}>{label}</Text>
       </View>
       <Text style={styles.colon}>:</Text>
-      <Text style={[styles.rowValue, label === 'Status' && { color: TEXT_PRIMARY, fontWeight: '700' }]}>{value}</Text>
+      <Text style={[
+        styles.rowValue,
+        label === 'Status' && { color: statusColor || TEXT_PRIMARY, fontWeight: '700' }
+      ]}>
+        {value}
+      </Text>
     </View>
   );
 }

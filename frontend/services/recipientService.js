@@ -1,15 +1,32 @@
 import API from "./api";
 
 // Fetch all available food donations for the Recipient Dashboard.
-// TODO: Uncomment call in index.js once the Donation backend endpoint is live.
 export const fetchAvailableFoods = async () => {
-  const response = await API.get("/recipient/foods");
+  const response = await API.get("/donations/available");
   return response.data;
 };
 
 // Fetch the current recipient's submitted food requests.
-// TODO: Uncomment call in my-requests.js once the Request API endpoint is live.
+// Fetch the current recipient's submitted food requests.
 export const fetchMyRequests = async () => {
-  const response = await API.get("/recipient/my-requests");
+  const response = await API.get("/requests/my-requests");
+  return response.data;
+};
+
+// Create a new food request
+export const createRequest = async (requestData) => {
+  const response = await API.post("/requests", requestData);
+  return response.data;
+};
+
+// Fetch a single request by ID
+export const fetchRequestById = async (id) => {
+  const response = await API.get(`/requests/${id}`);
+  return response.data;
+};
+
+// Cancel a specific pending request
+export const cancelRequest = async (id) => {
+  const response = await API.patch(`/requests/${id}/cancel`);
   return response.data;
 };
