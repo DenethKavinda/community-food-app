@@ -1,9 +1,8 @@
 import API from "./api";
 
 // Fetch all available food donations for the Recipient Dashboard.
-// TODO: Uncomment call in index.js once the Donation backend endpoint is live.
 export const fetchAvailableFoods = async () => {
-  const response = await API.get("/recipient/foods");
+  const response = await API.get("/donations/available");
   return response.data;
 };
 

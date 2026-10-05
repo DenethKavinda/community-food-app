@@ -165,3 +165,21 @@ exports.deleteDonation = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+// 6. GET AVAILABLE DONATIONS (Recipient Dashboard — Active only)
+exports.getAvailableDonations = async (req, res) => {
+  try {
+    const [donations] = await pool.query(
+      "SELECT * FROM donations WHERE status = 'Active' ORDER BY created_at DESC"
+    );
+
+    res.json({
+      success: true,
+      count: donations.length,
+      donations,
+    });
+  } catch (error) {
+    console.error("Get available donations error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};

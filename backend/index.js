@@ -5,6 +5,7 @@ require("dotenv").config();
 
 const authController = require("./controllers/authController");
 const donorRoutes = require("./routes/donorRoutes");
+const requestRoutes = require("./routes/requestRoutes");
 
 // Ensure DB connection initializes
 require("./config/db");
@@ -25,6 +26,7 @@ app.post("/api/auth/login", authController.login);
 
 // Donor Routes
 app.use("/api/donations", donorRoutes);
+app.use("/api/requests", requestRoutes);
 
 // Health Check Route
 app.get("/", (req, res) => {
