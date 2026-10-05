@@ -238,7 +238,25 @@ exports.getRequestById = async (req, res) => {
       });
     }
 
-    return res.json({ success: true, request: requests[0] });
+    const requestData = requests[0];
+
+    // Compute available portions excluding the current request itself
+    const [reservedReqs] = await pool.query(
+      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status IN ('Pending', 'Approved') AND id != ?",
+      [requestData.donation_id, id]
+    );
+
+    const originalQuantity = parseInt(requestData.donation_quantity) || 0;
+    const reservedPortions = parseInt(reservedReqs[0]?.reserved) || 0;
+    const available_portions = Math.max(0, originalQuantity - reservedPortions);
+
+    return res.json({ 
+      success: true, 
+      request: {
+        ...requestData,
+        available_portions
+      } 
+    });
   } catch (error) {
     console.error("getRequestById error:", error);
     return res
@@ -303,6 +321,31 @@ exports.updateRequest = async (req, res) => {
       });
     }
 
+    // ── Run Available Portions Validation ──
+    const [donations] = await pool.query(
+      "SELECT quantity FROM donations WHERE id = ?",
+      [existing[0].donation_id]
+    );
+
+    const [reservedReqs] = await pool.query(
+      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status IN ('Pending', 'Approved') AND id != ?",
+      [existing[0].donation_id, id]
+    );
+
+    const originalQuantity = parseInt(donations[0]?.quantity) || 0;
+    const reservedPortions = parseInt(reservedReqs[0]?.reserved) || 0;
+    const availablePortions = Math.max(0, originalQuantity - reservedPortions);
+
+    if (
+      requested_portions !== undefined &&
+      Number(requested_portions) > availablePortions
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Only ${availablePortions} portions are currently available.`,
+      });
+    }
+
     if (
       fulfillment_method !== undefined &&
       !VALID_FULFILLMENT_METHODS.includes(fulfillment_method)
@@ -313,22 +356,19 @@ exports.updateRequest = async (req, res) => {
       });
     }
 
-    // Determine effective fulfillment_method (new or existing)
-    const effectiveFulfillmentMethod =
+    const updatedMethod =
       fulfillment_method !== undefined
         ? fulfillment_method
         : existing[0].fulfillment_method;
 
-    // Determine effective delivery_address (new or existing)
-    const effectiveDeliveryAddress =
-      delivery_address !== undefined
-        ? delivery_address
-        : existing[0].delivery_address;
+    let updatedAddress = existing[0].delivery_address;
+    if (updatedMethod === "Self Pickup") {
+      updatedAddress = null;
+    } else if (delivery_address !== undefined) {
+      updatedAddress = delivery_address;
+    }
 
-    if (
-      effectiveFulfillmentMethod === "Volunteer Driver Delivery" &&
-      !effectiveDeliveryAddress
-    ) {
+    if (updatedMethod === "Volunteer Driver Delivery" && !updatedAddress) {
       return res.status(400).json({
         success: false,
         message:
@@ -344,8 +384,6 @@ exports.updateRequest = async (req, res) => {
 
     // ── Build update using only provided fields ─
     const updatedPortions      = requested_portions   !== undefined ? requested_portions   : existing[0].requested_portions;
-    const updatedMethod        = fulfillment_method   !== undefined ? fulfillment_method   : existing[0].fulfillment_method;
-    const updatedAddress       = delivery_address     !== undefined ? delivery_address     : existing[0].delivery_address;
     const updatedPhone         = contact_phone        !== undefined ? contact_phone        : existing[0].contact_phone;
     const updatedInstructions  = special_instructions !== undefined ? special_instructions : existing[0].special_instructions;
 

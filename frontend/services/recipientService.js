@@ -25,6 +25,12 @@ export const fetchRequestById = async (id) => {
   return response.data;
 };
 
+// Update an existing pending request
+export const updateRequest = async (id, requestData) => {
+  const response = await API.patch(`/requests/${id}`, requestData);
+  return response.data;
+};
+
 // Cancel a specific pending request
 export const cancelRequest = async (id) => {
   const response = await API.patch(`/requests/${id}/cancel`);
