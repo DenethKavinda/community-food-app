@@ -6,6 +6,7 @@ require("dotenv").config();
 const authController = require("./controllers/authController");
 const donorRoutes = require("./routes/donorRoutes");
 const requestRoutes = require("./routes/requestRoutes");
+const recipientRoutes = require("./routes/recipientRoutes");
 
 // Ensure DB connection initializes
 require("./config/db");
@@ -24,9 +25,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.post("/api/auth/register", authController.register);
 app.post("/api/auth/login", authController.login);
 
-// Donor Routes
+// Donor & Request & Recipient Routes
 app.use("/api/donations", donorRoutes);
 app.use("/api/requests", requestRoutes);
+app.use("/api/recipient", recipientRoutes);
 
 // Health Check Route
 app.get("/", (req, res) => {

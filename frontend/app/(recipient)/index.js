@@ -110,7 +110,10 @@ export default function RecipientDashboard() {
           <Text style={styles.userName} numberOfLines={1}>
             {user?.name ?? "Recipient"}
           </Text>
-          <TouchableOpacity style={styles.headerIconBtn}>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => router.push("/(recipient)/profile")}
+          >
             <PersonIcon />
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconBtn} onPress={logout}>

@@ -36,3 +36,17 @@ export const cancelRequest = async (id) => {
   const response = await API.patch(`/requests/${id}/cancel`);
   return response.data;
 };
+
+// Fetch the authenticated recipient's profile details
+export const fetchRecipientProfile = async () => {
+  const response = await API.get("/recipient/profile");
+  return response.data;
+};
+
+// Update the authenticated recipient's profile details
+export const updateRecipientProfile = async (profileData) => {
+  const response = await API.put("/recipient/profile", profileData);
+  return response.data;
+};
+
+
