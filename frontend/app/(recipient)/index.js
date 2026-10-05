@@ -13,8 +13,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { AuthContext } from "../../context/AuthContext";
-// TODO: Uncomment the import below when the backend endpoint is ready.
-// import { fetchAvailableFoods } from "../../services/recipientService";
+import { fetchAvailableFoods } from "../../services/recipientService";
 
 // ── Food data is fetched from the backend API ─────────────────────────────────
 // (DUMMY_FOOD removed – data will come from /api/recipient/foods)
@@ -77,22 +76,20 @@ export default function RecipientDashboard() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // TODO: Uncomment the lines below once the backend endpoint is ready.
-    // setLoading(true);
-    // fetchAvailableFoods()
-    //   .then((data) => setFoods(data))
-    //   .catch((err) => console.error("Failed to fetch foods:", err))
-    //   .finally(() => setLoading(false));
+    setLoading(true);
+    fetchAvailableFoods()
+      .then((data) => setFoods(data.donations || []))
+      .catch((err) => console.error("Failed to fetch foods:", err))
+      .finally(() => setLoading(false));
   }, []);
 
   const filteredFood = foods.filter((item) => {
     const matchesSearch =
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.donor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.location.toLowerCase().includes(searchQuery.toLowerCase());
+      (item.meal_name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      String(item.donor_id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.location || "").toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesCategory =
-      activeCategory === "All" || item.category === activeCategory;
+    const matchesCategory = activeCategory === "All";
 
     return matchesSearch && matchesCategory;
   });
@@ -241,40 +238,48 @@ function FoodCard({ item, onView }) {
       onMouseEnter={() => setCardHovered(true)}
       onMouseLeave={() => setCardHovered(false)}
     >
-      <FoodPlaceholder color={item.color} name={item.name} />
+      <FoodPlaceholder color={"#e8f5e9"} name={item.meal_name || ""} />
 
       <View style={styles.cardBody}>
-        <Text style={styles.cardTitle}>{item.name}</Text>
-        <Text style={styles.cardQuantity}>{item.quantity}</Text>
+        <Text style={styles.cardTitle}>{item.meal_name}</Text>
+        <Text style={styles.cardQuantity}>
+          {item.available_portions !== undefined ? `${item.available_portions} available` : item.quantity}
+        </Text>
 
         <View style={styles.cardMeta}>
           <LocationIcon />
-          <Text style={styles.cardMetaText}>{item.distance}</Text>
+          <Text style={styles.cardMetaText}>{item.location}</Text>
         </View>
         <View style={styles.cardMeta}>
           <ClockIcon />
-          <Text style={styles.cardMetaText}>{item.time}</Text>
+          <Text style={styles.cardMetaText}>{item.expiry_window}</Text>
         </View>
 
         <Text style={styles.cardDonor}>
-          Donor: <Text style={styles.cardDonorName}>{item.donor}</Text>
+          Donor ID: <Text style={styles.cardDonorName}>{item.donor_id}</Text>
         </Text>
         <Text style={styles.cardLocation}>
           📍 {item.location}
         </Text>
       </View>
 
-      <Pressable
-        style={[
-          styles.viewBtn,
-          btnHovered && styles.viewBtnHovered,
-        ]}
-        onHoverIn={() => setBtnHovered(true)}
-        onHoverOut={() => setBtnHovered(false)}
-        onPress={onView}
-      >
-        <Text style={styles.viewBtnText}>View</Text>
-      </Pressable>
+      {item.available_portions > 0 ? (
+        <Pressable
+          style={[
+            styles.viewBtn,
+            btnHovered && styles.viewBtnHovered,
+          ]}
+          onHoverIn={() => setBtnHovered(true)}
+          onHoverOut={() => setBtnHovered(false)}
+          onPress={onView}
+        >
+          <Text style={styles.viewBtnText}>View</Text>
+        </Pressable>
+      ) : (
+        <View style={[styles.viewBtn, { backgroundColor: '#e0e0e0', borderColor: '#ccc' }]}>
+          <Text style={[styles.viewBtnText, { color: '#888' }]}>Out of Stock</Text>
+        </View>
+      )}
     </View>
   );
 }

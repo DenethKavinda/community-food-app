@@ -130,6 +130,8 @@ exports.login = async (req, res) => {
         email: user.email,
         role: user.role,
         is_approved: user.is_approved,
+        phone: user.phone,
+        address: user.address,
       },
     });
   } catch (error) {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import {
   View,
   Text,
@@ -9,15 +9,17 @@ import {
   StatusBar,
   Platform,
   Alert,
+  TextInput,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { AuthContext } from "../../context/AuthContext";
+import { createRequest } from "../../services/recipientService";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const GREEN = "#2e7d32";
 const GREEN_MID = "#388e3c";
 const GREEN_LIGHT = "#e8f5e9";
 const GREEN_BORDER = "#c8e6c9";
-const GREEN_CHIP = "#4caf50";
 const BORDER = "#e8e8e8";
 const TEXT_PRIMARY = "#1a1a1a";
 const TEXT_SECONDARY = "#777";
@@ -25,7 +27,7 @@ const TEXT_MUTED = "#aaa";
 const RADIUS = 12;
 
 // ── Donation data is passed via route params from the Dashboard ───────────────
-// (DUMMY_REQUEST removed – data comes from params.itemData passed by the Dashboard)
+// (data comes from params.itemData passed by the Dashboard — real DB columns)
 
 // ── Small reusable components ─────────────────────────────────────────────────
 const BackIcon = () => <Text style={{ fontSize: 20, color: TEXT_PRIMARY }}>‹</Text>;
@@ -52,46 +54,110 @@ const SectionDivider = ({ title, actionLabel, onAction }) => (
 export default function ConfirmRequest() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { user } = useContext(AuthContext);
 
-  // Parse donation data sent from the Dashboard via router params
+  // ── Parse donation data sent from the Dashboard ───────────────────────────
   const rawItem = params.itemData ? JSON.parse(params.itemData) : {};
+
+  // Map real DB columns → local item shape
+  // quantity is stored as a string (e.g. "10 portions") — parse to int for stepper
+  // Prefer the backend-calculated available_portions if it's mapped, otherwise fallback.
+  const availablePortions = rawItem.available_portions !== undefined 
+    ? rawItem.available_portions 
+    : (parseInt(rawItem.quantity) || 1);
 
   const item = {
     id: rawItem.id ?? "",
-    name: rawItem.name ?? "",
-    availablePortions: rawItem.availablePortions ?? rawItem.quantity ?? 1,
-    donor: rawItem.donor ?? "",
-    distance: rawItem.distance ?? "",
-    timeWindow: rawItem.time ?? "",
-    color: rawItem.color ?? "#f0f0f0",
-    emoji: rawItem.emoji ?? "🥗",
-    // ── Fields below belong to the Request table (not yet available) ──
-    recipientEntity: "",
-    deliveryAddress: "",
-    contactPhone: "",
+    name: rawItem.meal_name ?? "",
+    availablePortions,
+    quantity: rawItem.quantity ?? "",
+    location: rawItem.location ?? "",
+    timeWindow: rawItem.expiry_window ?? "",
+    color: "#e8f5e9",
+    emoji: "🥗",
     estTime: "—",
     serviceFee: "Free (Donation)",
   };
 
-  const [portions, setPortions] = useState(Math.min(1, item.availablePortions));
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [portions, setPortions] = useState(1);
   const [fulfillment, setFulfillment] = useState("driver"); // 'driver' | 'pickup'
   const [notes, setNotes] = useState("");
 
+  // Pre-fill contact info from the logged-in user's registered profile
+  const [deliveryAddress, setDeliveryAddress] = useState(user?.address || "");
+  const [contactPhone, setContactPhone] = useState(user?.phone || "");
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ── Stepper ────────────────────────────────────────────────────────────────
+  // availablePortions is now always a valid integer, so Math.min/max work correctly
   const increment = () => setPortions((p) => Math.min(p + 1, item.availablePortions));
   const decrement = () => setPortions((p) => Math.max(p - 1, 1));
 
-  const handleConfirm = () => {
-    const today = new Date();
-    const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    
-    router.replace({
-      pathname: "/(recipient)/request-status",
-      params: {
-        id: item.id,
-        name: item.name,
-        date: formattedDate
+  // ── Confirm / Validation ───────────────────────────────────────────────────
+  const handleConfirm = async () => {
+    if (portions < 1 || portions > item.availablePortions) {
+      Alert.alert(
+        "Invalid Portions",
+        `Please request between 1 and ${item.availablePortions} portions.`
+      );
+      return;
+    }
+
+    if (!contactPhone.trim()) {
+      Alert.alert("Missing Information", "Please provide a contact phone number.");
+      return;
+    }
+
+    if (fulfillment === "driver" && !deliveryAddress.trim()) {
+      Alert.alert(
+        "Missing Information",
+        "Please provide a delivery address for Volunteer Driver Delivery."
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const requestData = {
+        donation_id: item.id,
+        requested_portions: portions,
+        fulfillment_method:
+          fulfillment === "driver" ? "Volunteer Driver Delivery" : "Self Pickup",
+        delivery_address: fulfillment === "driver" ? deliveryAddress : null,
+        contact_phone: contactPhone,
+        special_instructions: notes || null,
+      };
+
+      const response = await createRequest(requestData);
+
+      if (response && response.success) {
+        const today = new Date();
+        const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+        router.replace({
+          pathname: "/(recipient)/request-status",
+          params: {
+            id: response.request.id,
+            name: item.name,
+            date: formattedDate,
+          },
+        });
+      } else {
+        Alert.alert("Error", response.message || "Failed to submit request.");
+        setIsSubmitting(false);
       }
-    });
+    } catch (error) {
+      console.error("Create request error:", error);
+      Alert.alert(
+        "Submission Failed",
+        error.response?.data?.message ||
+          "An error occurred while submitting your request. Please try again."
+      );
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -100,7 +166,7 @@ export default function ConfirmRequest() {
 
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.headerBtn} onPress={() => router.canGoBack() ? router.back() : router.replace("/(recipient)")}>
           <BackIcon />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Confirm Request</Text>
@@ -120,18 +186,18 @@ export default function ConfirmRequest() {
           {/* Food image + info row */}
           <View style={styles.foodRow}>
             <View style={[styles.foodThumb, { backgroundColor: item.color }]}>
-              <Text style={styles.foodEmoji}>{item.emoji ?? "🥗"}</Text>
+              <Text style={styles.foodEmoji}>{item.emoji}</Text>
             </View>
             <View style={styles.foodInfo}>
               <Text style={styles.foodName}>{item.name}</Text>
               <View style={styles.availChip}>
                 <Text style={styles.availChipText}>
-                  {item.availablePortions} portions available
+                  {item.quantity || item.availablePortions + " portions"} available
                 </Text>
               </View>
               <View style={styles.metaRow}>
                 <Text style={styles.metaIcon}>📍</Text>
-                <Text style={styles.metaText}>{item.donor} · {item.distance}</Text>
+                <Text style={styles.metaText}>{item.location}</Text>
               </View>
               <View style={styles.metaRow}>
                 <Text style={styles.metaIcon}>🕐</Text>
@@ -146,7 +212,9 @@ export default function ConfirmRequest() {
           {/* Requested Portions Stepper */}
           <View>
             <Text style={styles.portionLabel}>Requested Portions</Text>
-            <Text style={styles.portionHint}>Max limit: {item.availablePortions} portions</Text>
+            <Text style={styles.portionHint}>
+              Max limit: {item.availablePortions} portions
+            </Text>
             <View style={styles.stepperRow}>
               <TouchableOpacity style={styles.stepperBtn} onPress={decrement}>
                 <Text style={styles.stepperBtnText}>−</Text>
@@ -203,22 +271,54 @@ export default function ConfirmRequest() {
             </View>
           </View>
           <Text style={styles.fulfillDesc}>
-            Collect the package in-person from the donor at {item.donor}.
+            Collect the package in-person from the donor at {item.location}.
           </Text>
         </TouchableOpacity>
 
         {/* ── Delivery & Contact Info ── */}
         <SectionDivider
           title="DELIVERY & CONTACT INFO"
-          actionLabel="Edit"
-          onAction={() => {}}
+          actionLabel={isEditingContact ? "Save" : "Edit"}
+          onAction={() => setIsEditingContact((prev) => !prev)}
         />
 
-        <View style={styles.card}>
-          <InfoRow icon="🏢" label={item.recipientEntity} />
-          <InfoRow icon="📍" label={item.deliveryAddress} />
-          <InfoRow icon="📞" label={item.contactPhone} last />
-        </View>
+        {isEditingContact ? (
+          /* ── Edit Mode ── */
+          <View style={styles.card}>
+            <View style={styles.editField}>
+              <Text style={styles.editLabel}>📍  Delivery Address</Text>
+              <TextInput
+                style={styles.editInput}
+                value={deliveryAddress}
+                onChangeText={setDeliveryAddress}
+                placeholder="Enter delivery address"
+                placeholderTextColor={TEXT_MUTED}
+                multiline
+              />
+            </View>
+            <View style={[styles.editField, styles.editFieldBorder]}>
+              <Text style={styles.editLabel}>📞  Contact Phone</Text>
+              <TextInput
+                style={styles.editInput}
+                value={contactPhone}
+                onChangeText={setContactPhone}
+                placeholder="Enter contact phone number"
+                placeholderTextColor={TEXT_MUTED}
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+        ) : (
+          /* ── Read-only Mode ── */
+          <View style={styles.card}>
+            <InfoRow icon="📍" label={deliveryAddress || "No address set"} />
+            <InfoRow
+              icon="📞"
+              label={contactPhone || "No phone set"}
+              last
+            />
+          </View>
+        )}
 
         {/* ── Delivery Notes ── */}
         <SectionDivider title="DELIVERY NOTES / SPECIAL INSTRUCTIONS" />
@@ -243,8 +343,15 @@ export default function ConfirmRequest() {
 
       {/* ── Sticky Confirm Button ── */}
       <View style={styles.stickyFooter}>
-        <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
-          <Text style={styles.confirmBtnText}>Confirm Request →</Text>
+        <TouchableOpacity 
+          style={[styles.confirmBtn, isSubmitting && { opacity: 0.7 }]} 
+          onPress={handleConfirm} 
+          activeOpacity={0.85}
+          disabled={isSubmitting}
+        >
+          <Text style={styles.confirmBtnText}>
+            {isSubmitting ? "Submitting..." : "Confirm Request →"}
+          </Text>
         </TouchableOpacity>
         <Text style={styles.footerNote}>
           You can track status or cancel this request under{" "}
@@ -276,16 +383,18 @@ function SummaryRow({ label, value, valueGreen }) {
 
 function NotesInput({ value, onChange }) {
   const [focused, setFocused] = useState(false);
-  // Use a simple TextInput-like approach with a native text view
   return (
-    <View style={[styles.notesBox, focused && styles.notesBoxFocused]}>
-      <Text
-        style={styles.notesPlaceholder}
-        onPress={() => setFocused(true)}
-      >
-        {value || "e.g. Please ring front bell, leave with security at gate..."}
-      </Text>
-    </View>
+    <TextInput
+      style={[styles.notesBox, focused && styles.notesBoxFocused, styles.notesText]}
+      value={value}
+      onChangeText={onChange}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      placeholder="e.g. Please ring front bell, leave with security at gate..."
+      placeholderTextColor={TEXT_MUTED}
+      multiline
+      textAlignVertical="top"
+    />
   );
 }
 
@@ -530,7 +639,7 @@ const styles = StyleSheet.create({
     color: GREEN_MID,
   },
 
-  // ── Info rows ──
+  // ── Info rows (read-only contact view) ──
   infoRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -549,6 +658,32 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  // ── Edit contact fields ──
+  editField: {
+    paddingVertical: 8,
+  },
+  editFieldBorder: {
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
+  editLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: TEXT_SECONDARY,
+    marginBottom: 6,
+  },
+  editInput: {
+    borderWidth: 1,
+    borderColor: GREEN_BORDER,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: TEXT_PRIMARY,
+    backgroundColor: "#fafffe",
+    minHeight: 38,
+  },
+
   // ── Notes box ──
   notesBox: {
     minHeight: 56,
@@ -562,9 +697,9 @@ const styles = StyleSheet.create({
     borderColor: GREEN_BORDER,
     backgroundColor: "#fff",
   },
-  notesPlaceholder: {
+  notesText: {
     fontSize: 13,
-    color: TEXT_MUTED,
+    color: TEXT_PRIMARY,
     lineHeight: 20,
   },
 

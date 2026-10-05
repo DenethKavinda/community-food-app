@@ -1,31 +1,85 @@
 import React, { useContext } from "react";
-import { View, Text, StyleSheet, Button } from "react-native";
+import { View, StyleSheet, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+
+import { useRouter } from "expo-router";
 import { AuthContext } from "../../context/AuthContext";
 
+import DriverHeader from "../../components/driver/DriverHeader";
+import DriverPickupRequest from "../../components/driver/DriverPickupRequest";
+import DriverTasks from "../../components/driver/DriverTasks";
+import DriverBottomNav from "../../components/driver/DriverBottomNav";
+
 export default function DriverDashboard() {
-  const { user, logout } = useContext(AuthContext);
+  const router = useRouter();
+  const { user } = useContext(AuthContext);
+
+  const handleAcceptPickup = () => {
+    router.push("/(driver)/map");
+  };
+
+  const handleTaskPress = (task) => {
+    console.log(
+      `TASK CLICKED: ${task.title} - Pickup from ${task.location} at ${task.time}`
+    );
+  };
+
+  const handleTabPress = (tab) => {
+    console.log(`TAB CLICKED: ${tab}`);
+  };
+
+  const handleProfilePress = () => {
+    router.push("/(driver)/profile");
+  };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Driver Dashboard</Text>
-      <Text style={styles.welcome}>Welcome, {user?.name}</Text>
-      <Button title="Logout" color="#d32f2f" onPress={logout} />
-    </View>
+    <SafeAreaView
+      style={styles.safeArea}
+      edges={["top", "left", "right"]}
+    >
+      <StatusBar style="dark" />
+
+      <DriverHeader
+        title="Driver Dashboard"
+        onProfilePress={handleProfilePress}
+      />
+
+      <View style={styles.mainContent}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <DriverPickupRequest
+            onAccept={handleAcceptPickup}
+          />
+
+          <DriverTasks
+            onTaskPress={handleTaskPress}
+          />
+        </ScrollView>
+
+        <DriverBottomNav
+          activeTab="Home"
+          onTabPress={handleTabPress}
+        />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f3e5f5",
+    backgroundColor: "#FFFFFF",
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 10,
-    color: "#6a1b9a",
+
+  mainContent: {
+    flex: 1,
+    backgroundColor: "#F7F8F7",
   },
-  welcome: { fontSize: 16, marginBottom: 20 },
+
+  scrollContent: {
+    paddingBottom: 20,
+  },
 });
