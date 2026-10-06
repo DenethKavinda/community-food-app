@@ -10,11 +10,21 @@ if (!fs.existsSync(uploadsDir)) {
 
 // 1. CREATE NEW FOOD DONATION
 exports.createDonation = async (req, res) => {
-  const { food_item_id, meal_name, quantity, location, expiry_window, notes, image_base64, image_url } = req.body;
+  const { food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_base64, image_url } = req.body;
   const donor_id = req.user ? req.user.id : (req.body.donor_id || 1);
 
   let finalMealName = meal_name ? meal_name.trim() : "";
   let validFoodItemId = food_item_id ? parseInt(food_item_id) : null;
+
+  // Validate numeric quantity > 0
+  const numericQty = parseFloat(quantity);
+  if (isNaN(numericQty) || numericQty <= 0) {
+    return res.status(400).json({
+      message: "Please enter a valid numeric quantity greater than 0.",
+    });
+  }
+
+  const finalQuantityUnit = quantity_unit ? quantity_unit.trim().toLowerCase() : "portions";
 
   // If food_item_id is provided, try to fetch the item's name if meal_name is empty
   if (validFoodItemId && !finalMealName) {
@@ -68,11 +78,22 @@ exports.createDonation = async (req, res) => {
       savedImageUrl = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80";
     }
 
-    const [result] = await pool.query(
-      `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
-      [donor_id, validFoodItemId, finalMealName, quantity, location, expiry_window, notes || null, savedImageUrl]
-    );
+    let result;
+    try {
+      [result] = await pool.query(
+        `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+        [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl]
+      );
+    } catch (dbErr) {
+      // Fallback query if quantity_unit column is not added yet in MySQL
+      const combinedQty = `${numericQty} ${finalQuantityUnit}`;
+      [result] = await pool.query(
+        `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+        [donor_id, validFoodItemId, finalMealName, combinedQty, location, expiry_window, notes || null, savedImageUrl]
+      );
+    }
 
     const [newDonation] = await pool.query("SELECT * FROM donations WHERE id = ?", [result.insertId]);
 

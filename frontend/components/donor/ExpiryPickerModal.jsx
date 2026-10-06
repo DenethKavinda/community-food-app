@@ -6,19 +6,9 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
-  TextInput,
   Platform,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-
-const PRESET_OPTIONS = [
-  "Today, 02:00 PM",
-  "Today, 05:00 PM",
-  "Today, 08:00 PM",
-  "Tomorrow, 10:00 AM",
-  "Tomorrow, 02:00 PM",
-  "Tomorrow, 06:00 PM",
-];
 
 const TIME_SLOTS = [
   "08:00 AM",
@@ -38,38 +28,40 @@ export default function ExpiryPickerModal({
 }) {
   const [selectedDay, setSelectedDay] = useState("Today");
   const [selectedTime, setSelectedTime] = useState("05:00 PM");
-  const [customDateStr, setCustomDateStr] = useState("");
 
-  const handleSelectPreset = (preset) => {
-    onSelectExpiry(preset);
-    onClose();
-  };
-
-  const handleConfirmCustom = () => {
-    let dayText = selectedDay;
-    if (selectedDay === "Custom" && customDateStr.trim()) {
-      dayText = customDateStr.trim();
-    }
-    const finalVal = `${dayText}, ${selectedTime}`;
+  const handleConfirm = () => {
+    const finalVal = `${selectedDay}, ${selectedTime}`;
     onSelectExpiry(finalVal);
     onClose();
   };
 
-  // Web Native Date/Time picker handler
-  const handleWebNativeDateTime = (e) => {
-    const val = e.target.value; // format: "YYYY-MM-DDTHH:mm"
-    if (val) {
-      const dateObj = new Date(val);
-      const dateStr = dateObj.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      });
-      const timeStr = dateObj.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      onSelectExpiry(`${dateStr}, ${timeStr}`);
-      onClose();
+  // Handle native web date picker change
+  const handleDateChange = (e) => {
+    const dateVal = e.target.value; // YYYY-MM-DD
+    if (dateVal) {
+      const parts = dateVal.split("-");
+      if (parts.length === 3) {
+        const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+        const formattedDate = dateObj.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        });
+        setSelectedDay(formattedDate);
+      }
+    }
+  };
+
+  // Handle native web time picker change
+  const handleTimeChange = (e) => {
+    const timeVal = e.target.value; // HH:MM
+    if (timeVal) {
+      const parts = timeVal.split(":");
+      let hours = parseInt(parts[0]);
+      const minutes = parts[1];
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12 || 12;
+      const formattedTime = `${hours.toString().padStart(2, "0")}:${minutes} ${ampm}`;
+      setSelectedTime(formattedTime);
     }
   };
 
@@ -93,7 +85,7 @@ export default function ExpiryPickerModal({
             <View>
               <Text style={styles.modalTitle}>Set Expiry Window</Text>
               <Text style={styles.modalSubtitle}>
-                Select when this surplus food must be consumed by
+                1. Pick date → 2. Pick time
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -102,47 +94,16 @@ export default function ExpiryPickerModal({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-            {/* Quick Presets Section */}
-            <Text style={styles.sectionLabel}>Quick Presets</Text>
-            <View style={styles.presetGrid}>
-              {PRESET_OPTIONS.map((preset) => {
-                const isSelected = currentValue === preset;
-                return (
-                  <TouchableOpacity
-                    key={preset}
-                    style={[
-                      styles.presetChip,
-                      isSelected && styles.presetChipSelected,
-                    ]}
-                    onPress={() => handleSelectPreset(preset)}
-                    activeOpacity={0.75}
-                  >
-                    <Ionicons
-                      name="time-outline"
-                      size={14}
-                      color={isSelected ? "#FFFFFF" : "#087A3D"}
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text
-                      style={[
-                        styles.presetChipText,
-                        isSelected && styles.presetChipTextSelected,
-                      ]}
-                    >
-                      {preset}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+            {/* STEP 1: PICK DATE */}
+            <View style={styles.stepHeaderRow}>
+              <Ionicons name="calendar" size={16} color="#087A3D" style={{ marginRight: 6 }} />
+              <Text style={styles.stepTitle}>1. Select Date</Text>
+              <Text style={styles.selectedBadgeText}>Selected: {selectedDay}</Text>
             </View>
 
-            {/* Custom Interactive Date & Time Picker */}
-            <View style={styles.divider} />
-            <Text style={styles.sectionLabel}>Custom Date & Time Selector</Text>
-
-            {/* Day Selector Pills */}
+            {/* Quick Day Pills */}
             <View style={styles.daysRow}>
-              {["Today", "Tomorrow", "In 2 Days", "Custom"].map((day) => {
+              {["Today", "Tomorrow", "In 2 Days"].map((day) => {
                 const isSelected = selectedDay === day;
                 return (
                   <TouchableOpacity
@@ -167,22 +128,40 @@ export default function ExpiryPickerModal({
               })}
             </View>
 
-            {/* If Custom Date typed */}
-            {selectedDay === "Custom" && (
-              <View style={styles.customDateWrapper}>
-                <Ionicons name="calendar-outline" size={18} color="#087A3D" style={{ marginRight: 8 }} />
-                <TextInput
-                  style={styles.customDateInput}
-                  value={customDateStr}
-                  onChangeText={setCustomDateStr}
-                  placeholder="e.g. Oct 10 or 2026-10-10"
-                  placeholderTextColor="#9CA3AF"
+            {/* Web Calendar Date Picker */}
+            {Platform.OS === "web" && (
+              <View style={styles.pickerCard}>
+                <Text style={styles.pickerCardLabel}>Or pick custom date on calendar:</Text>
+                <input
+                  type="date"
+                  onChange={handleDateChange}
+                  style={{
+                    padding: "9px 12px",
+                    borderRadius: "10px",
+                    border: "1px solid #D1D5DB",
+                    fontSize: "13.5px",
+                    fontFamily: "inherit",
+                    color: "#111827",
+                    backgroundColor: "#FFFFFF",
+                    width: "100%",
+                    boxSizing: "border-box",
+                    cursor: "pointer",
+                    outline: "none",
+                  }}
                 />
               </View>
             )}
 
-            {/* Time Slot Picker */}
-            <Text style={[styles.sectionLabel, { marginTop: 12 }]}>Select Time</Text>
+            <View style={styles.divider} />
+
+            {/* STEP 2: PICK TIME */}
+            <View style={styles.stepHeaderRow}>
+              <Ionicons name="time" size={16} color="#087A3D" style={{ marginRight: 6 }} />
+              <Text style={styles.stepTitle}>2. Select Time</Text>
+              <Text style={styles.selectedBadgeText}>Selected: {selectedTime}</Text>
+            </View>
+
+            {/* Time Slot Pills */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timeSlotsRow}>
               {TIME_SLOTS.map((time) => {
                 const isSelected = selectedTime === time;
@@ -209,22 +188,23 @@ export default function ExpiryPickerModal({
               })}
             </ScrollView>
 
-            {/* Web Native Calendar & Time Picker input */}
+            {/* Web Clock Time Picker */}
             {Platform.OS === "web" && (
-              <View style={styles.nativeWebContainer}>
-                <Text style={styles.nativeWebLabel}>Or pick exact Date & Time calendar:</Text>
+              <View style={styles.pickerCard}>
+                <Text style={styles.pickerCardLabel}>Or pick custom time on clock:</Text>
                 <input
-                  type="datetime-local"
-                  onChange={handleWebNativeDateTime}
+                  type="time"
+                  onChange={handleTimeChange}
                   style={{
-                    padding: "8px 12px",
+                    padding: "9px 12px",
                     borderRadius: "10px",
-                    border: "1px solid #E5E7EB",
-                    fontSize: "14px",
+                    border: "1px solid #D1D5DB",
+                    fontSize: "13.5px",
                     fontFamily: "inherit",
                     color: "#111827",
-                    backgroundColor: "#F9FAFB",
+                    backgroundColor: "#FFFFFF",
                     width: "100%",
+                    boxSizing: "border-box",
                     cursor: "pointer",
                     outline: "none",
                   }}
@@ -233,16 +213,16 @@ export default function ExpiryPickerModal({
             )}
           </ScrollView>
 
-          {/* Confirm Button */}
+          {/* Confirmation Button */}
           <View style={styles.actionsRow}>
             <TouchableOpacity
               style={styles.confirmBtn}
-              onPress={handleConfirmCustom}
+              onPress={handleConfirm}
               activeOpacity={0.85}
             >
               <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
               <Text style={styles.confirmBtnText}>
-                Confirm Expiry ({selectedDay}, {selectedTime})
+                Set Expiry to ({selectedDay}, {selectedTime})
               </Text>
             </TouchableOpacity>
           </View>
@@ -285,51 +265,32 @@ const styles = StyleSheet.create({
   },
   modalSubtitle: {
     fontSize: 12,
-    color: "#6B7280",
+    color: "#087A3D",
+    fontWeight: "600",
     marginTop: 2,
   },
   closeBtn: {
     padding: 4,
   },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#374151",
-    marginBottom: 8,
-  },
-  presetGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
-  },
-  presetChip: {
+  stepHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F0FDF4",
-    borderWidth: 1,
-    borderColor: "#DCFCE7",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    marginBottom: 8,
   },
-  presetChipSelected: {
-    backgroundColor: "#087A3D",
-    borderColor: "#087A3D",
+  stepTitle: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    color: "#111827",
+    flex: 1,
   },
-  presetChipText: {
-    fontSize: 12,
+  selectedBadgeText: {
+    fontSize: 11.5,
     fontWeight: "600",
     color: "#087A3D",
-  },
-  presetChipTextSelected: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#E5E7EB",
-    marginVertical: 12,
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   daysRow: {
     flexDirection: "row",
@@ -350,7 +311,7 @@ const styles = StyleSheet.create({
     borderColor: "#087A3D",
   },
   dayPillText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: "600",
     color: "#374151",
   },
@@ -358,25 +319,29 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
   },
-  customDateWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
+  pickerCard: {
     backgroundColor: "#F9FAFB",
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 42,
+    padding: 10,
     marginBottom: 10,
   },
-  customDateInput: {
-    flex: 1,
-    fontSize: 13,
-    color: "#111827",
+  pickerCardLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginBottom: 6,
+    fontWeight: "500",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 12,
   },
   timeSlotsRow: {
     gap: 8,
     paddingVertical: 4,
+    marginBottom: 10,
   },
   timeSlot: {
     paddingHorizontal: 14,
@@ -398,17 +363,6 @@ const styles = StyleSheet.create({
   timeSlotTextSelected: {
     color: "#FFFFFF",
     fontWeight: "700",
-  },
-  nativeWebContainer: {
-    marginTop: 14,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F3F4F6",
-  },
-  nativeWebLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 6,
   },
   actionsRow: {
     marginTop: 14,

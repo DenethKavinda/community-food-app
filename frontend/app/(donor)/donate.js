@@ -23,6 +23,7 @@ import DonationSuccess from "../../components/donor/DonationSuccess";
 import LocationPickerModal, { reverseGeocodeCoords } from "../../components/donor/LocationPickerModal";
 import FoodItemSelector from "../../components/donor/FoodItemSelector";
 import ExpiryPickerModal from "../../components/donor/ExpiryPickerModal";
+import QuantityUnitSelector from "../../components/donor/QuantityUnitSelector";
 import { fetchFoodItems } from "../../services/foodItemService";
 
 export default function DonateFoodScreen() {
@@ -32,6 +33,7 @@ export default function DonateFoodScreen() {
   const [location, setLocation] = useState("Colombo 03, Sri Lanka");
   const [mealName, setMealName] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [quantityUnit, setQuantityUnit] = useState("portions");
   const [expiryWindow, setExpiryWindow] = useState("Today, 02:00 PM");
   const [notes, setNotes] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
@@ -127,9 +129,20 @@ export default function DonateFoodScreen() {
   const handleSubmit = async () => {
     const finalMealName = selectedFoodItem ? selectedFoodItem.name : mealName.trim();
     const foodItemId = selectedFoodItem ? selectedFoodItem.id : null;
+    const parsedQty = parseFloat(quantity);
 
-    if (!finalMealName || !quantity.trim()) {
-      Alert.alert("Required Fields", "Please select a Food Item and enter Quantity.");
+    if (!finalMealName) {
+      Alert.alert("Required Field", "Please select a Food Item.");
+      return;
+    }
+
+    if (isNaN(parsedQty) || parsedQty <= 0) {
+      Alert.alert("Validation Error", "Please enter a valid numeric quantity greater than 0.");
+      return;
+    }
+
+    if (!quantityUnit) {
+      Alert.alert("Validation Error", "Please select a unit (e.g. portions, packets, kg).");
       return;
     }
 
@@ -144,7 +157,8 @@ export default function DonateFoodScreen() {
         body: JSON.stringify({
           food_item_id: foodItemId,
           meal_name: finalMealName,
-          quantity: quantity.trim(),
+          quantity: parsedQty,
+          quantity_unit: quantityUnit.toLowerCase(),
           location: location.trim() || "Colombo 03, Sri Lanka",
           expiry_window: expiryWindow || "Today, 02:00 PM",
           notes: notes.trim(),
@@ -171,12 +185,13 @@ export default function DonateFoodScreen() {
   };
 
   if (isSubmitted) {
+    const formattedQtyDisplay = `${quantity} ${quantityUnit.charAt(0).toUpperCase() + quantityUnit.slice(1)}`;
     return (
       <DonationSuccess
         donationId="#FD00123"
         postedDate={new Date().toISOString().split("T")[0]}
-        mealName={mealName.trim() || "Fresh Artisan Bread & Pastries"}
-        quantity={quantity.trim() || "~12 kg"}
+        mealName={mealName.trim() || (selectedFoodItem ? selectedFoodItem.name : "Fresh Artisan Bread & Pastries")}
+        quantity={formattedQtyDisplay}
         expiryWindow={expiryWindow || "Today, 5:00 PM – 7:30 PM"}
         image={selectedImage || "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=300&q=80"}
         onBackToDashboard={() => router.push("/(donor)")}
@@ -283,23 +298,14 @@ export default function DonateFoodScreen() {
               onRefreshItems={loadFoodItems}
             />
 
-            {/* 3. Quantity & Portions */}
-            <View style={styles.fieldGroup}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>Quantity & Portions</Text>
-                <Text style={styles.subLabel}>Approximate servings</Text>
-              </View>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="people-outline" size={18} color="#087A3D" style={styles.inputLeftIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  placeholder="e.g. 10 portions (or 3 catering boxes)"
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-            </View>
+            {/* 3. Numeric Quantity & Unit Selector */}
+            <QuantityUnitSelector
+              quantity={quantity}
+              onChangeQuantity={setQuantity}
+              unit={quantityUnit}
+              onChangeUnit={setQuantityUnit}
+              category={selectedFoodItem ? selectedFoodItem.category : null}
+            />
 
             {/* 4. Consume Before (Expiry Window) */}
             <View style={styles.fieldGroup}>
