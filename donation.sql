@@ -21,8 +21,9 @@ CREATE TABLE IF NOT EXISTS donations (
     FOREIGN KEY (food_item_id) REFERENCES food_items(id) ON DELETE SET NULL
 );
 
--- 2. Migration statement if updating existing database:
+-- 2. Migration statements if updating existing database:
 -- ALTER TABLE donations ADD COLUMN quantity_unit VARCHAR(50) DEFAULT 'portions' AFTER quantity;
+-- ALTER TABLE donations MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending';
 
 -- 3. Insert Sample Seed Data for Donor Module Testing
 INSERT INTO donations (donor_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)

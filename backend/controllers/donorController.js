@@ -79,20 +79,58 @@ exports.createDonation = async (req, res) => {
     }
 
     let result;
+    const statusToUse = "Pending";
+
     try {
       [result] = await pool.query(
         `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
-        [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl, statusToUse]
       );
     } catch (dbErr) {
-      // Fallback query if quantity_unit column is not added yet in MySQL
-      const combinedQty = `${numericQty} ${finalQuantityUnit}`;
-      [result] = await pool.query(
-        `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
-        [donor_id, validFoodItemId, finalMealName, combinedQty, location, expiry_window, notes || null, savedImageUrl]
-      );
+      console.warn("DB Query attempt 1 note:", dbErr.message);
+
+      // Handle status ENUM truncation error (errno 1265 / WARN_DATA_TRUNCATED)
+      if (dbErr.errno === 1265 || dbErr.code === "WARN_DATA_TRUNCATED") {
+        try {
+          await pool.query("ALTER TABLE donations MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending'");
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl]
+          );
+        } catch (alterErr) {
+          console.warn("Could not alter status column, falling back to 'Active':", alterErr.message);
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl]
+          );
+        }
+      } else {
+        // Fallback query if quantity_unit column is not added yet in MySQL
+        const combinedQty = `${numericQty} ${finalQuantityUnit}`;
+        try {
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+            [donor_id, validFoodItemId, finalMealName, combinedQty, location, expiry_window, notes || null, savedImageUrl]
+          );
+        } catch (err2) {
+          if (err2.errno === 1265 || err2.code === "WARN_DATA_TRUNCATED") {
+            try {
+              await pool.query("ALTER TABLE donations MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending'");
+            } catch (e) {}
+            [result] = await pool.query(
+              `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+              [donor_id, validFoodItemId, finalMealName, combinedQty, location, expiry_window, notes || null, savedImageUrl]
+            );
+          } else {
+            throw err2;
+          }
+        }
+      }
     }
 
     const [newDonation] = await pool.query("SELECT * FROM donations WHERE id = ?", [result.insertId]);

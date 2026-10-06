@@ -54,8 +54,7 @@ export default function QuantityUnitSelector({
   const availableUnits = getAvailableUnits();
 
   const currentUnitObj =
-    ALL_UNITS.find((u) => u.value === (unit || "").toLowerCase()) ||
-    ALL_UNITS[0];
+    ALL_UNITS.find((u) => u.value === (unit || "").toLowerCase()) || null;
 
   const handleSelectUnit = (unitValue) => {
     onChangeUnit(unitValue);
@@ -97,14 +96,28 @@ export default function QuantityUnitSelector({
 
         {/* Unit Dropdown Trigger Button */}
         <TouchableOpacity
-          style={styles.unitDropdownTrigger}
+          style={[
+            styles.unitDropdownTrigger,
+            !currentUnitObj && styles.unitDropdownTriggerEmpty,
+          ]}
           onPress={() => setModalVisible(true)}
           activeOpacity={0.8}
         >
-          <Text style={styles.unitTriggerText} numberOfLines={1}>
-            {currentUnitObj.label}
+          <Text
+            style={[
+              styles.unitTriggerText,
+              !currentUnitObj && styles.unitTriggerTextEmpty,
+            ]}
+            numberOfLines={1}
+          >
+            {currentUnitObj ? currentUnitObj.label : "Choose"}
           </Text>
-          <Ionicons name="chevron-down" size={18} color="#087A3D" style={{ marginLeft: 6 }} />
+          <Ionicons
+            name="chevron-down"
+            size={18}
+            color={currentUnitObj ? "#087A3D" : "#6B7280"}
+            style={{ marginLeft: 4 }}
+          />
         </TouchableOpacity>
       </View>
 
@@ -221,7 +234,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   unitDropdownTrigger: {
-    width: 125,
+    width: 120,
     height: 48,
     flexDirection: "row",
     alignItems: "center",
@@ -232,11 +245,20 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
   },
+  unitDropdownTriggerEmpty: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E5E7EB",
+    borderWidth: 1,
+  },
   unitTriggerText: {
     fontSize: 13.5,
     fontWeight: "700",
     color: "#087A3D",
     flex: 1,
+  },
+  unitTriggerTextEmpty: {
+    color: "#9CA3AF",
+    fontWeight: "500",
   },
   modalOverlay: {
     flex: 1,

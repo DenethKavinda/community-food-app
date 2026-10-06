@@ -33,7 +33,7 @@ export default function DonateFoodScreen() {
   const [location, setLocation] = useState("Colombo 03, Sri Lanka");
   const [mealName, setMealName] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [quantityUnit, setQuantityUnit] = useState("portions");
+  const [quantityUnit, setQuantityUnit] = useState("");
   const [expiryWindow, setExpiryWindow] = useState("Today, 02:00 PM");
   const [notes, setNotes] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
@@ -185,7 +185,9 @@ export default function DonateFoodScreen() {
   };
 
   if (isSubmitted) {
-    const formattedQtyDisplay = `${quantity} ${quantityUnit.charAt(0).toUpperCase() + quantityUnit.slice(1)}`;
+    const formattedQtyDisplay = quantityUnit
+      ? `${quantity} ${quantityUnit.charAt(0).toUpperCase() + quantityUnit.slice(1)}`
+      : `${quantity}`;
     return (
       <DonationSuccess
         donationId="#FD00123"
