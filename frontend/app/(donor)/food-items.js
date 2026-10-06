@@ -245,14 +245,7 @@ export default function FoodItemManagementScreen() {
 
         <Text style={styles.subHeaderTitle}>Food Item Catalog</Text>
 
-        <TouchableOpacity
-          style={styles.addButtonHeader}
-          onPress={handleOpenCreateModal}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="add" size={18} color="#FFFFFF" style={{ marginRight: 4 }} />
-          <Text style={styles.addButtonHeaderText}>Add Item</Text>
-        </TouchableOpacity>
+        <View style={{ width: 34 }} />
       </View>
 
       <View style={styles.mainContainer}>

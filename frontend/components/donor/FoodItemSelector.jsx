@@ -58,8 +58,8 @@ export default function FoodItemSelector({
           style={styles.addQuickBtn}
           activeOpacity={0.7}
         >
-          <Ionicons name="add-circle-outline" size={15} color="#087A3D" />
-          <Text style={styles.addQuickText}>+ Add New Food</Text>
+          <Ionicons name="add-circle-outline" size={16} color="#087A3D" />
+          <Text style={styles.addQuickText}>Add New Food</Text>
         </TouchableOpacity>
       </View>
 
@@ -101,7 +101,7 @@ export default function FoodItemSelector({
               )}
             </View>
           ) : (
-            <Text style={styles.placeholderText}>[ Select Food Item ▼ ]</Text>
+            <Text style={styles.placeholderText}>Select Food Item</Text>
           )}
         </View>
 
@@ -143,14 +143,14 @@ export default function FoodItemSelector({
               </TouchableOpacity>
             </View>
 
-            {/* "+ Add New Food" Action Header Button */}
+            {/* "Add New Food" Action Header Button */}
             <TouchableOpacity
               style={styles.modalAddButton}
               onPress={handleAddNewFood}
               activeOpacity={0.85}
             >
               <Ionicons name="add-circle" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.modalAddButtonText}>+ Add New Food Item to Catalog</Text>
+              <Text style={styles.modalAddButtonText}>Add New Food Item to Catalog</Text>
             </TouchableOpacity>
 
             {/* List of Food Items */}
@@ -170,7 +170,7 @@ export default function FoodItemSelector({
                   style={styles.createFirstBtn}
                   onPress={handleAddNewFood}
                 >
-                  <Text style={styles.createFirstText}>+ Create Food Item Now</Text>
+                  <Text style={styles.createFirstText}>Create Food Item Now</Text>
                 </TouchableOpacity>
               </View>
             ) : (

@@ -22,6 +22,7 @@ import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import DonationSuccess from "../../components/donor/DonationSuccess";
 import LocationPickerModal, { reverseGeocodeCoords } from "../../components/donor/LocationPickerModal";
 import FoodItemSelector from "../../components/donor/FoodItemSelector";
+import ExpiryPickerModal from "../../components/donor/ExpiryPickerModal";
 import { fetchFoodItems } from "../../services/foodItemService";
 
 export default function DonateFoodScreen() {
@@ -36,6 +37,9 @@ export default function DonateFoodScreen() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+
+  // Expiry Picker Modal State
+  const [isExpiryModalVisible, setIsExpiryModalVisible] = useState(false);
 
   // Reusable Food Item State
   const [foodItems, setFoodItems] = useState([]);
@@ -315,8 +319,12 @@ export default function DonateFoodScreen() {
                   placeholder="Select expiry time"
                   placeholderTextColor="#9CA3AF"
                 />
-                <TouchableOpacity style={styles.inputRightIconBtn}>
-                  <Ionicons name="calendar-outline" size={18} color="#6B7280" />
+                <TouchableOpacity
+                  style={styles.inputRightIconBtn}
+                  onPress={() => setIsExpiryModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="calendar-outline" size={20} color="#087A3D" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -410,6 +418,14 @@ export default function DonateFoodScreen() {
         onClose={() => setIsMapModalVisible(false)}
         initialAddress={location}
         onSelectLocation={(selected) => setLocation(selected.address)}
+      />
+
+      {/* Interactive Expiry Calendar & Timer Picker Modal */}
+      <ExpiryPickerModal
+        visible={isExpiryModalVisible}
+        onClose={() => setIsExpiryModalVisible(false)}
+        currentValue={expiryWindow}
+        onSelectExpiry={(selected) => setExpiryWindow(selected)}
       />
     </SafeAreaView>
   );

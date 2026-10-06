@@ -8,6 +8,11 @@ export default function DonationCard({ donation, onPress }) {
   // Status badge styling helper
   const getStatusBadgeStyle = (status) => {
     switch (status) {
+      case "Pending":
+        return {
+          badge: { backgroundColor: "#FEF3C7" },
+          text: { color: "#D97706" },
+        };
       case "Active":
         return {
           badge: { backgroundColor: "#DCFCE7" },

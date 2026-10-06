@@ -70,7 +70,7 @@ exports.createDonation = async (req, res) => {
 
     const [result] = await pool.query(
       `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
       [donor_id, validFoodItemId, finalMealName, quantity, location, expiry_window, notes || null, savedImageUrl]
     );
 
@@ -146,7 +146,7 @@ exports.updateDonationStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  const validStatuses = ["Active", "Picked Up", "Completed", "Cancelled"];
+  const validStatuses = ["Pending", "Active", "Picked Up", "Completed", "Cancelled"];
   if (!status || !validStatuses.includes(status)) {
     return res.status(400).json({ message: "Invalid status provided." });
   }
@@ -181,11 +181,11 @@ exports.deleteDonation = async (req, res) => {
   }
 };
 
-// 6. GET AVAILABLE DONATIONS (Recipient Dashboard — Active only)
+// 6. GET AVAILABLE DONATIONS (Recipient Dashboard — Pending or Active)
 exports.getAvailableDonations = async (req, res) => {
   try {
     const [donations] = await pool.query(
-      "SELECT * FROM donations WHERE status = 'Active' ORDER BY created_at DESC"
+      "SELECT * FROM donations WHERE status IN ('Pending', 'Active') ORDER BY created_at DESC"
     );
 
     // Fetch overlapping requests to calculate remaining available portions

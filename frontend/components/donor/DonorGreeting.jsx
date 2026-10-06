@@ -6,16 +6,23 @@ export default function DonorGreeting({
   userName = "Nawaz",
   avatarUrl = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80",
 }) {
+  const getGreetingTime = () => {
+    const currentHour = new Date().getHours();
+    if (currentHour < 12) return "Good Morning";
+    if (currentHour < 18) return "Good Afternoon";
+    return "Good Evening";
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.textColumn}>
-        <Text style={styles.greetingText}>Good Morning,</Text>
+        <Text style={styles.greetingText}>{getGreetingTime()}</Text>
         <View style={styles.nameRow}>
           <Text style={styles.userName}>{userName}</Text>
-          <Ionicons name="checkmark-circle" size={18} color="#087A3D" style={styles.checkIcon} />
+          <Ionicons name="checkmark-circle" size={19} color="#087A3D" style={styles.checkIcon} />
         </View>
         <Text style={styles.subtext}>
-          Thank you{"\n"}for making a{"\n"}difference!
+          Thank you for making a difference!
         </Text>
       </View>
 
@@ -31,24 +38,25 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    paddingHorizontal: 16,
+    alignItems: "center",
+    paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 12,
+    paddingBottom: 14,
   },
   textColumn: {
     flex: 1,
+    marginRight: 12,
   },
   greetingText: {
     fontSize: 13,
     color: "#6B7280",
+    fontWeight: "500",
     marginBottom: 2,
-    fontWeight: "400",
   },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 4,
   },
   userName: {
     fontSize: 22,
@@ -61,26 +69,26 @@ const styles = StyleSheet.create({
   },
   subtext: {
     fontSize: 13,
-    color: "#6B7280",
-    lineHeight: 17,
+    color: "#4B5563",
+    lineHeight: 18,
+    fontWeight: "400",
   },
   avatarContainer: {
     position: "relative",
-    marginTop: 4,
   },
   avatarImage: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: "#E5E7EB",
   },
   onlineBadge: {
     position: "absolute",
     bottom: 2,
     right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 13,
+    height: 13,
+    borderRadius: 6.5,
     backgroundColor: "#087A3D",
     borderWidth: 2,
     borderColor: "#FFFFFF",

@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS donations (
     expiry_window VARCHAR(100) NOT NULL,
     notes TEXT NULL,
     image_url VARCHAR(500) NULL,
-    status ENUM('Active', 'Picked Up', 'Completed', 'Cancelled') DEFAULT 'Active',
+    status ENUM('Pending', 'Active', 'Picked Up', 'Completed', 'Cancelled') DEFAULT 'Pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (donor_id) REFERENCES users(id) ON DELETE CASCADE
