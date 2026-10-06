@@ -194,7 +194,23 @@ export default function DonorProfileScreen() {
               <Feather name="chevron-right" size={16} color="#9CA3AF" style={{ marginLeft: 6 }} />
             </TouchableOpacity>
 
-            {/* Menu Item 2: Saved Pickup Addresses */}
+            {/* Menu Item 2: My Food Items Catalog */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push("/(donor)/food-items")}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuIconBox}>
+                <MaterialCommunityIcons name="silverware-fork-knife" size={20} color="#087A3D" />
+              </View>
+              <View style={styles.menuTextContainer}>
+                <Text style={styles.menuTitle}>My Food Items Catalog</Text>
+                <Text style={styles.menuSubtitle}>Manage reusable menu dishes & items</Text>
+              </View>
+              <Feather name="chevron-right" size={16} color="#9CA3AF" />
+            </TouchableOpacity>
+
+            {/* Menu Item 3: Saved Pickup Addresses */}
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => Alert.alert("Addresses", "Saved pickup addresses.")}

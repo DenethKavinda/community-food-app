@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,8 @@ import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import DonationSuccess from "../../components/donor/DonationSuccess";
 import LocationPickerModal, { reverseGeocodeCoords } from "../../components/donor/LocationPickerModal";
+import FoodItemSelector from "../../components/donor/FoodItemSelector";
+import { fetchFoodItems } from "../../services/foodItemService";
 
 export default function DonateFoodScreen() {
   const router = useRouter();
@@ -35,9 +37,36 @@ export default function DonateFoodScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
+  // Reusable Food Item State
+  const [foodItems, setFoodItems] = useState([]);
+  const [selectedFoodItem, setSelectedFoodItem] = useState(null);
+  const [isLoadingFoodItems, setIsLoadingFoodItems] = useState(true);
+
   // Map & GPS Location State
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+
+  // Load Saved Food Items for Donor
+  const loadFoodItems = async () => {
+    setIsLoadingFoodItems(true);
+    try {
+      const data = await fetchFoodItems(1);
+      const items = data && data.foodItems ? data.foodItems : (Array.isArray(data) ? data : []);
+      setFoodItems(items);
+      if (items.length > 0) {
+        setSelectedFoodItem(items[0]);
+        setMealName(items[0].name);
+      }
+    } catch (err) {
+      console.warn("Could not load food items:", err.message);
+    } finally {
+      setIsLoadingFoodItems(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFoodItems();
+  }, []);
 
   // Fetch Current GPS Location
   const handleFetchGPSLocation = async () => {
@@ -92,8 +121,11 @@ export default function DonateFoodScreen() {
 
   // Form Submission Handler
   const handleSubmit = async () => {
-    if (!mealName.trim() || !quantity.trim()) {
-      Alert.alert("Required Fields", "Please enter both Meal Name and Quantity.");
+    const finalMealName = selectedFoodItem ? selectedFoodItem.name : mealName.trim();
+    const foodItemId = selectedFoodItem ? selectedFoodItem.id : null;
+
+    if (!finalMealName || !quantity.trim()) {
+      Alert.alert("Required Fields", "Please select a Food Item and enter Quantity.");
       return;
     }
 
@@ -106,7 +138,8 @@ export default function DonateFoodScreen() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          meal_name: mealName.trim(),
+          food_item_id: foodItemId,
+          meal_name: finalMealName,
           quantity: quantity.trim(),
           location: location.trim() || "Colombo 03, Sri Lanka",
           expiry_window: expiryWindow || "Today, 02:00 PM",
@@ -234,20 +267,17 @@ export default function DonateFoodScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* 2. Food or Meal Name */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Food or Meal Name</Text>
-              <View style={styles.inputWrapper}>
-                <MaterialCommunityIcons name="silverware-fork-knife" size={18} color="#087A3D" style={styles.inputLeftIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={mealName}
-                  onChangeText={setMealName}
-                  placeholder="e.g. Rice & Curry or Fresh Baked Breads"
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-            </View>
+            {/* 2. Food Item Selector Dropdown */}
+            <FoodItemSelector
+              selectedItem={selectedFoodItem}
+              onSelectItem={(item) => {
+                setSelectedFoodItem(item);
+                setMealName(item ? item.name : "");
+              }}
+              foodItems={foodItems}
+              isLoading={isLoadingFoodItems}
+              onRefreshItems={loadFoodItems}
+            />
 
             {/* 3. Quantity & Portions */}
             <View style={styles.fieldGroup}>

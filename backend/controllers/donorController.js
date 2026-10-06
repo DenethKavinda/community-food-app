@@ -10,12 +10,27 @@ if (!fs.existsSync(uploadsDir)) {
 
 // 1. CREATE NEW FOOD DONATION
 exports.createDonation = async (req, res) => {
-  const { meal_name, quantity, location, expiry_window, notes, image_base64, image_url } = req.body;
+  const { food_item_id, meal_name, quantity, location, expiry_window, notes, image_base64, image_url } = req.body;
   const donor_id = req.user ? req.user.id : (req.body.donor_id || 1);
 
-  if (!meal_name || !quantity || !location || !expiry_window) {
+  let finalMealName = meal_name ? meal_name.trim() : "";
+  let validFoodItemId = food_item_id ? parseInt(food_item_id) : null;
+
+  // If food_item_id is provided, try to fetch the item's name if meal_name is empty
+  if (validFoodItemId && !finalMealName) {
+    try {
+      const [foodItems] = await pool.query("SELECT name FROM food_items WHERE id = ?", [validFoodItemId]);
+      if (foodItems.length > 0) {
+        finalMealName = foodItems[0].name;
+      }
+    } catch (err) {
+      console.warn("Could not fetch food item name:", err.message);
+    }
+  }
+
+  if (!finalMealName || !quantity || !location || !expiry_window) {
     return res.status(400).json({
-      message: "Please fill in all required fields (Meal Name, Quantity, Location, Expiry Window).",
+      message: "Please fill in all required fields (Meal Name/Food Item, Quantity, Location, Expiry Window).",
     });
   }
 
@@ -54,9 +69,9 @@ exports.createDonation = async (req, res) => {
     }
 
     const [result] = await pool.query(
-      `INSERT INTO donations (donor_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')`,
-      [donor_id, meal_name, quantity, location, expiry_window, notes || null, savedImageUrl]
+      `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+      [donor_id, validFoodItemId, finalMealName, quantity, location, expiry_window, notes || null, savedImageUrl]
     );
 
     const [newDonation] = await pool.query("SELECT * FROM donations WHERE id = ?", [result.insertId]);
