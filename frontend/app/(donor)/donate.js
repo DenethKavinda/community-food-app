@@ -25,6 +25,7 @@ import FoodItemSelector from "../../components/donor/FoodItemSelector";
 import ExpiryPickerModal from "../../components/donor/ExpiryPickerModal";
 import QuantityUnitSelector from "../../components/donor/QuantityUnitSelector";
 import { fetchFoodItems } from "../../services/foodItemService";
+import { createDonation } from "../../services/donorService";
 
 export default function DonateFoodScreen() {
   const router = useRouter();
@@ -39,6 +40,7 @@ export default function DonateFoodScreen() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [createdDonation, setCreatedDonation] = useState(null);
 
   // Expiry Picker Modal State
   const [isExpiryModalVisible, setIsExpiryModalVisible] = useState(false);
@@ -56,7 +58,7 @@ export default function DonateFoodScreen() {
   const loadFoodItems = async () => {
     setIsLoadingFoodItems(true);
     try {
-      const data = await fetchFoodItems(1);
+      const data = await fetchFoodItems();
       const items = data && data.foodItems ? data.foodItems : (Array.isArray(data) ? data : []);
       setFoodItems(items);
       if (items.length > 0) {
@@ -149,53 +151,51 @@ export default function DonateFoodScreen() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/donations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          food_item_id: foodItemId,
-          meal_name: finalMealName,
-          quantity: parsedQty,
-          quantity_unit: quantityUnit.toLowerCase(),
-          location: location.trim() || "Colombo 03, Sri Lanka",
-          expiry_window: expiryWindow || "Today, 02:00 PM",
-          notes: notes.trim(),
-          image_base64: selectedImage && selectedImage.startsWith("data:image") ? selectedImage : null,
-          image_url: selectedImage && !selectedImage.startsWith("data:image") ? selectedImage : null,
-          donor_id: 1,
-        }),
+      const data = await createDonation({
+        food_item_id: foodItemId,
+        meal_name: finalMealName,
+        quantity: parsedQty,
+        quantity_unit: quantityUnit.toLowerCase(),
+        location: location.trim() || "Colombo 03, Sri Lanka",
+        expiry_window: expiryWindow || "Today, 02:00 PM",
+        notes: notes.trim(),
+        image_base64: selectedImage && selectedImage.startsWith("data:image") ? selectedImage : null,
+        image_url: selectedImage && !selectedImage.startsWith("data:image") ? selectedImage : null,
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
+      if (data && data.donation) {
+        setCreatedDonation(data.donation);
         setIsSubmitting(false);
         setIsSubmitted(true);
       } else {
-        Alert.alert("Submission Failed", data.message || "Failed to submit donation.");
+        Alert.alert("Submission Failed", data?.message || "Failed to submit donation.");
         setIsSubmitting(false);
       }
     } catch (error) {
-      console.warn("Backend connection error, falling back to local view:", error.message);
+      console.warn("Donation submit error:", error.message);
+      Alert.alert(
+        "Submission Error",
+        error.response?.data?.message || error.message || "Failed to submit donation."
+      );
       setIsSubmitting(false);
-      setIsSubmitted(true);
     }
   };
 
   if (isSubmitted) {
+    const realId = createdDonation?.id
+      ? `#FD${String(createdDonation.id).padStart(5, "0")}`
+      : null;
     const formattedQtyDisplay = quantityUnit
       ? `${quantity} ${quantityUnit.charAt(0).toUpperCase() + quantityUnit.slice(1)}`
       : `${quantity}`;
     return (
       <DonationSuccess
-        donationId="#FD00123"
-        postedDate={new Date().toISOString().split("T")[0]}
-        mealName={mealName.trim() || (selectedFoodItem ? selectedFoodItem.name : "Fresh Artisan Bread & Pastries")}
+        donationId={realId}
+        postedDate={createdDonation?.created_at ? createdDonation.created_at.split("T")[0] : new Date().toISOString().split("T")[0]}
+        mealName={mealName.trim() || (selectedFoodItem ? selectedFoodItem.name : "Fresh Food Donation")}
         quantity={formattedQtyDisplay}
-        expiryWindow={expiryWindow || "Today, 5:00 PM – 7:30 PM"}
-        image={selectedImage || "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=300&q=80"}
+        expiryWindow={expiryWindow || "Today, 05:00 PM"}
+        image={selectedImage || "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80"}
         onBackToDashboard={() => router.push("/(donor)")}
         onViewDonation={() => setIsSubmitted(false)}
       />

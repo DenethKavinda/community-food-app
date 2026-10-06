@@ -58,49 +58,17 @@ export default function FoodItemManagementScreen() {
   const loadFoodItems = async () => {
     try {
       setIsLoading(true);
-      const data = await fetchFoodItems(1);
+      const data = await fetchFoodItems();
       if (data && data.foodItems) {
         setFoodItems(data.foodItems);
       } else if (Array.isArray(data)) {
         setFoodItems(data);
+      } else {
+        setFoodItems([]);
       }
     } catch (error) {
       console.warn("Failed to load food items from backend:", error.message);
-      // Fallback sample data if backend connection fails
-      setFoodItems([
-        {
-          id: 1,
-          donor_id: 1,
-          name: "Rice & Curry",
-          category: "Cooked Meal",
-          description: "Sri Lankan rice and curry meal with vegetable dishes",
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 2,
-          donor_id: 1,
-          name: "Fresh Bread",
-          category: "Bakery",
-          description: "Assorted artisanal baked loaves and dinner rolls",
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 3,
-          donor_id: 1,
-          name: "Vegetable Kottu",
-          category: "Cooked Meal",
-          description: "Freshly made Sri Lankan style vegetable kottu roti",
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 4,
-          donor_id: 1,
-          name: "Fried Rice",
-          category: "Cooked Meal",
-          description: "Egg and vegetable fried rice prepared fresh",
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      setFoodItems([]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -155,33 +123,16 @@ export default function FoodItemManagementScreen() {
           name: name.trim(),
           category: category.trim(),
           description: description.trim(),
-          donor_id: 1,
         });
       }
       setIsFormModalVisible(false);
       await loadFoodItems();
     } catch (error) {
       console.warn("Error saving food item:", error.message);
-      // Fallback local update if backend fails
-      if (editingItem) {
-        setFoodItems((prev) =>
-          prev.map((i) =>
-            i.id === editingItem.id
-              ? { ...i, name: name.trim(), category: category.trim(), description: description.trim() }
-              : i
-          )
-        );
-      } else {
-        const newItem = {
-          id: Date.now(),
-          donor_id: 1,
-          name: name.trim(),
-          category: category.trim(),
-          description: description.trim(),
-          created_at: new Date().toISOString(),
-        };
-        setFoodItems((prev) => [newItem, ...prev]);
-      }
+      Alert.alert(
+        "Save Error",
+        error.response?.data?.message || error.message || "Could not save food item."
+      );
       setIsFormModalVisible(false);
     } finally {
       setIsSaving(false);

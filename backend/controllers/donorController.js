@@ -10,8 +10,12 @@ if (!fs.existsSync(uploadsDir)) {
 
 // 1. CREATE NEW FOOD DONATION
 exports.createDonation = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: "Authentication required. Please log in." });
+  }
+
   const { food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_base64, image_url } = req.body;
-  const donor_id = req.user ? req.user.id : (req.body.donor_id || 1);
+  const donor_id = req.user.id;
 
   let finalMealName = meal_name ? meal_name.trim() : "";
   let validFoodItemId = food_item_id ? parseInt(food_item_id) : null;
@@ -191,7 +195,11 @@ function isExpiryPassed(expiryWindowStr, createdAtStr) {
 
 // 2. GET DONATIONS (Logged-in Donor History or All Posts)
 exports.getDonorDonations = async (req, res) => {
-  const donor_id = req.user ? req.user.id : (req.query.donor_id || 1);
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: "Authentication required. Please log in." });
+  }
+
+  const donor_id = req.user.id;
   const showAll = req.query.all === "true";
   const statusFilter = req.query.status;
 

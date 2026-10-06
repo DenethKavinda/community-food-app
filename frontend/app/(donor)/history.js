@@ -15,50 +15,17 @@ import { StatusBar } from "expo-status-bar";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
+import API from "../../services/api";
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
-
-const mockHistoryData = [
-  {
-    id: "1",
-    title: "Rice & Curry",
-    quantity: "10 portions",
-    location: "Colombo 03",
-    expiry: "Today, 05:00 PM",
-    notes: "Fresh vegetarian rice and curry packets.",
-    date: "2026-10-06",
-    status: "Active",
-    image: "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80",
-  },
-  {
-    id: "2",
-    title: "Sandwiches",
-    quantity: "20 portions",
-    location: "Wellawatte",
-    expiry: "Today, 08:00 PM",
-    notes: "Assorted egg and vegetable sandwiches.",
-    date: "2026-10-05",
-    status: "Picked Up",
-    image: "https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=300&q=80",
-  },
-  {
-    id: "3",
-    title: "Fruits (Mixed)",
-    quantity: "15 portions",
-    location: "Nugegoda",
-    expiry: "Yesterday, 06:00 PM",
-    notes: "Fresh bananas, apples, and oranges.",
-    date: "2026-10-04",
-    status: "Completed",
-    image: "https://images.unsplash.com/photo-1619566636858-adf3ef46400b?auto=format&fit=crop&w=300&q=80",
-  },
-];
+import { getMyDonations, deleteDonation } from "../../services/donorService";
 
 export default function DonationHistoryScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Recent Posts");
-  const [donations, setDonations] = useState(mockHistoryData);
+  const [donations, setDonations] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // View Details Modal state
   const [selectedDonation, setSelectedDonation] = useState(null);
@@ -76,14 +43,23 @@ export default function DonationHistoryScreen() {
 
   const fetchDonations = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const response = await fetch("http://localhost:5000/api/donations/my-donations?all=true");
-      const data = await response.json();
-      if (data.success && data.donations) {
+      const data = await getMyDonations();
+      if (data && data.success && data.donations) {
+        const serverBaseUrl = API.defaults.baseURL ? API.defaults.baseURL.replace(/\/api\/?$/, "") : "";
+
         const formatted = data.donations.map((item) => {
           let formattedQty = item.quantity || "";
           if (item.quantity_unit) {
             formattedQty = `${item.quantity} ${item.quantity_unit.charAt(0).toUpperCase() + item.quantity_unit.slice(1)}`;
+          }
+
+          let img = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80";
+          if (item.image_url) {
+            img = item.image_url.startsWith("http")
+              ? item.image_url
+              : `${serverBaseUrl}${item.image_url}`;
           }
 
           return {
@@ -95,15 +71,17 @@ export default function DonationHistoryScreen() {
             notes: item.notes || "None provided",
             date: item.created_at ? item.created_at.split("T")[0] : new Date().toISOString().split("T")[0],
             status: item.status || "Pending",
-            image: item.image_url && item.image_url.startsWith("http")
-              ? item.image_url
-              : (item.image_url ? `http://localhost:5000${item.image_url}` : "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80"),
+            image: img,
           };
         });
         setDonations(formatted);
+      } else {
+        setDonations([]);
       }
     } catch (err) {
-      console.warn("Backend fetch failed, using mock data:", err.message);
+      console.warn("Backend fetch failed:", err.message);
+      setError(err.response?.data?.message || err.message || "Could not load donations.");
+      setDonations([]);
     } finally {
       setLoading(false);
     }
@@ -115,23 +93,14 @@ export default function DonationHistoryScreen() {
 
     setIsDeleting(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/donations/${deletingDonation.id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        setDonations((prev) => prev.filter((item) => item.id !== deletingDonation.id));
-        if (selectedDonation && selectedDonation.id === deletingDonation.id) {
-          setSelectedDonation(null);
-        }
-      } else {
-        const resData = await response.json();
-        Alert.alert("Delete Error", resData.message || "Could not delete donation.");
-        setDonations((prev) => prev.filter((item) => item.id !== deletingDonation.id));
+      await deleteDonation(deletingDonation.id);
+      setDonations((prev) => prev.filter((item) => item.id !== deletingDonation.id));
+      if (selectedDonation && selectedDonation.id === deletingDonation.id) {
+        setSelectedDonation(null);
       }
     } catch (err) {
       console.warn("Delete request error:", err.message);
-      setDonations((prev) => prev.filter((item) => item.id !== deletingDonation.id));
+      Alert.alert("Delete Error", err.response?.data?.message || "Could not delete donation.");
     } finally {
       setIsDeleting(false);
       setDeletingDonation(null);

@@ -2,8 +2,15 @@ const pool = require("../config/db");
 
 // 1. CREATE A FOOD ITEM
 exports.createFoodItem = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({
+      success: false,
+      message: "Authentication required. Please log in.",
+    });
+  }
+
   const { name, category, description } = req.body;
-  const donor_id = req.user ? req.user.id : (req.body.donor_id || 1);
+  const donor_id = req.user.id;
 
   if (!name || !name.trim() || !category || !category.trim()) {
     return res.status(400).json({
@@ -41,7 +48,14 @@ exports.createFoodItem = async (req, res) => {
 
 // 2. GET ALL FOOD ITEMS FOR A DONOR
 exports.getFoodItems = async (req, res) => {
-  const donor_id = req.user ? req.user.id : (req.query.donor_id || 1);
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({
+      success: false,
+      message: "Authentication required. Please log in.",
+    });
+  }
+
+  const donor_id = req.user.id;
 
   try {
     const [foodItems] = await pool.query(

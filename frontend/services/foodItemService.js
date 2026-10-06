@@ -1,8 +1,8 @@
 import API from "./api";
 
-// Fetch all food items created by a specific donor (defaults to donor_id 1)
-export const fetchFoodItems = async (donorId = 1) => {
-  const response = await API.get(`/food-items?donor_id=${donorId}`);
+// Fetch all food items created by the logged-in donor
+export const fetchFoodItems = async () => {
+  const response = await API.get("/food-items");
   return response.data;
 };
 
