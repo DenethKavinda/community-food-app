@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
+  ActivityIndicator,
   Alert,
   Platform,
 } from "react-native";
@@ -14,10 +15,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import * as Location from "expo-location";
 
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import DonationSuccess from "../../components/donor/DonationSuccess";
+import LocationPickerModal, { reverseGeocodeCoords } from "../../components/donor/LocationPickerModal";
 
 export default function DonateFoodScreen() {
   const router = useRouter();
@@ -31,6 +34,32 @@ export default function DonateFoodScreen() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+
+  // Map & GPS Location State
+  const [isMapModalVisible, setIsMapModalVisible] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+
+  // Fetch Current GPS Location
+  const handleFetchGPSLocation = async () => {
+    setIsLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Location permission is required to fetch current GPS location.");
+        setIsLocating(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const address = await reverseGeocodeCoords(loc.coords.latitude, loc.coords.longitude);
+      setLocation(address);
+    } catch (err) {
+      console.warn("GPS location error:", err.message);
+      Alert.alert("Location Error", "Could not determine location automatically. Please select on Google Map.");
+    } finally {
+      setIsLocating(false);
+    }
+  };
 
   // Real Image Picker (File Browser on Web / Base64 Data URL)
   const handleSelectImage = () => {
@@ -167,31 +196,42 @@ export default function DonateFoodScreen() {
 
           {/* Form Fields */}
           <View style={styles.formContainer}>
-            {/* 1. Pickup Location */}
+            {/* 1. Pickup Location (Google Map / GPS Only) */}
             <View style={styles.fieldGroup}>
               <View style={styles.labelRow}>
                 <Text style={styles.label}>Pickup Location</Text>
-                <View style={styles.activeHubBadge}>
-                  <Ionicons name="checkmark-circle" size={12} color="#087A3D" />
-                  <Text style={styles.activeHubText}>Active Hub</Text>
-                </View>
-              </View>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="location-outline" size={18} color="#087A3D" style={styles.inputLeftIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={location}
-                  onChangeText={setLocation}
-                  placeholder="Enter pickup location"
-                  placeholderTextColor="#9CA3AF"
-                />
-                <TouchableOpacity
-                  style={styles.inputRightIconBtn}
-                  onPress={() => setLocation("Colombo 03, Sri Lanka")}
+                <TouchableOpacity 
+                  onPress={handleFetchGPSLocation}
+                  disabled={isLocating}
+                  style={styles.activeHubBadge}
+                  activeOpacity={0.7}
                 >
-                  <Ionicons name="locate-outline" size={18} color="#6B7280" />
+                  {isLocating ? (
+                    <ActivityIndicator size="small" color="#087A3D" />
+                  ) : (
+                    <Ionicons name="navigate" size={13} color="#087A3D" />
+                  )}
+                  <Text style={styles.activeHubText}>
+                    {isLocating ? "Locating..." : "Use Current GPS"}
+                  </Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Clickable Location Card (Opens Map Picker) */}
+              <TouchableOpacity
+                style={styles.locationCardSelect}
+                onPress={() => setIsMapModalVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="location-sharp" size={20} color="#087A3D" style={{ marginRight: 8 }} />
+                <Text style={styles.locationCardText} numberOfLines={1}>
+                  {location || "Select location on Google Map"}
+                </Text>
+                <View style={styles.mapPillBadge}>
+                  <MaterialCommunityIcons name="google-maps" size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.mapPillText}>Google Map</Text>
+                </View>
+              </TouchableOpacity>
             </View>
 
             {/* 2. Food or Meal Name */}
@@ -333,6 +373,14 @@ export default function DonateFoodScreen() {
         {/* Fixed Bottom Navigation Bar with "Donate" active */}
         <DonorBottomNav initialTab="Donate" />
       </View>
+
+      {/* Location Picker Modal */}
+      <LocationPickerModal
+        visible={isMapModalVisible}
+        onClose={() => setIsMapModalVisible(false)}
+        initialAddress={location}
+        onSelectLocation={(selected) => setLocation(selected.address)}
+      />
     </SafeAreaView>
   );
 }
@@ -437,6 +485,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#087A3D",
+  },
+  mapSelectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#DCFCE7",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 8,
+  },
+  locationCardSelect: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#087A3D",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    shadowColor: "#087A3D",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  locationCardText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  mapPillBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#087A3D",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  mapPillText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   safetyRow: {
     flexDirection: "row",
