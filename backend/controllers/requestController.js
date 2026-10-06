@@ -71,8 +71,8 @@ exports.createRequest = async (req, res) => {
         .json({ success: false, message: "Donation not found." });
     }
 
-    // ── Check donation is Active ──────────────
-    if (donations[0].status !== "Active") {
+    // ── Check donation is available (Active or Pending) ──
+    if (donations[0].status !== "Active" && donations[0].status !== "Pending") {
       return res.status(400).json({
         success: false,
         message: "This donation is no longer available for requests.",

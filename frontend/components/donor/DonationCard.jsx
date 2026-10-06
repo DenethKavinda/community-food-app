@@ -10,28 +10,45 @@ export default function DonationCard({ donation, onPress }) {
     switch (status) {
       case "Pending":
         return {
+          label: "Available",
           badge: { backgroundColor: "#FEF3C7" },
           text: { color: "#D97706" },
         };
       case "Active":
         return {
+          label: "Reserved",
           badge: { backgroundColor: "#DCFCE7" },
           text: { color: "#087A3D" },
         };
       case "Picked Up":
         return {
+          label: "Picked Up",
           badge: { backgroundColor: "#F3F4F6" },
           text: { color: "#4B5563" },
         };
       case "Completed":
         return {
+          label: "Completed",
           badge: { backgroundColor: "#DCFCE7" },
           text: { color: "#087A3D" },
         };
-      default:
+      case "Cancelled":
         return {
+          label: "Cancelled",
+          badge: { backgroundColor: "#FEF2F2" },
+          text: { color: "#DC2626" },
+        };
+      case "Expired":
+        return {
+          label: "Expired",
           badge: { backgroundColor: "#F3F4F6" },
           text: { color: "#6B7280" },
+        };
+      default:
+        return {
+          label: status || "Available",
+          badge: { backgroundColor: "#FEF3C7" },
+          text: { color: "#D97706" },
         };
     }
   };
@@ -63,7 +80,7 @@ export default function DonationCard({ donation, onPress }) {
       </View>
 
       <View style={[styles.statusBadge, statusStyle.badge]}>
-        <Text style={[styles.statusText, statusStyle.text]}>{status}</Text>
+        <Text style={[styles.statusText, statusStyle.text]}>{statusStyle.label}</Text>
       </View>
     </TouchableOpacity>
   );

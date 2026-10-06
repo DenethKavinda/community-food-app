@@ -145,6 +145,50 @@ exports.createDonation = async (req, res) => {
   }
 };
 
+// Helper function to check if donation expiry date has passed
+function isExpiryPassed(expiryWindowStr, createdAtStr) {
+  if (!expiryWindowStr) return false;
+  const str = expiryWindowStr.trim();
+  const now = new Date();
+
+  let targetDate = new Date(createdAtStr || now);
+
+  if (str.toLowerCase().startsWith("today")) {
+    targetDate = new Date();
+  } else if (str.toLowerCase().startsWith("yesterday")) {
+    return true; // Yesterday is always in the past
+  } else if (str.toLowerCase().startsWith("tomorrow")) {
+    targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + 1);
+  } else if (str.toLowerCase().startsWith("in 2 days")) {
+    targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + 2);
+  }
+
+  // Extract time portion e.g. "05:00 PM" or "17:00"
+  const timeMatch = str.match(/(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1], 10);
+    const minutes = parseInt(timeMatch[2], 10);
+    const ampm = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
+
+    if (ampm === "PM" && hours < 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+
+    targetDate.setHours(hours, minutes, 0, 0);
+    return targetDate < now;
+  }
+
+  // Fallback: direct date parse
+  const directDate = new Date(str.includes(",") ? str.split(",")[0] : str);
+  if (!isNaN(directDate.getTime())) {
+    directDate.setHours(23, 59, 59, 999);
+    return directDate < now;
+  }
+
+  return false;
+}
+
 // 2. GET DONATIONS (Logged-in Donor History or All Posts)
 exports.getDonorDonations = async (req, res) => {
   const donor_id = req.user ? req.user.id : (req.query.donor_id || 1);
@@ -172,6 +216,18 @@ exports.getDonorDonations = async (req, res) => {
 
     const [donations] = await pool.query(query, queryParams);
 
+    // Auto-update expired Pending donations
+    for (let d of donations) {
+      if (d.status === "Pending" && isExpiryPassed(d.expiry_window, d.created_at)) {
+        d.status = "Expired";
+        try {
+          await pool.query("UPDATE donations SET status = 'Expired' WHERE id = ?", [d.id]);
+        } catch (e) {
+          console.warn(`Could not update donation ${d.id} to Expired:`, e.message);
+        }
+      }
+    }
+
     res.json({
       success: true,
       count: donations.length,
@@ -194,7 +250,15 @@ exports.getDonationById = async (req, res) => {
       return res.status(404).json({ message: "Donation item not found." });
     }
 
-    res.json({ success: true, donation: donations[0] });
+    const d = donations[0];
+    if (d.status === "Pending" && isExpiryPassed(d.expiry_window, d.created_at)) {
+      d.status = "Expired";
+      try {
+        await pool.query("UPDATE donations SET status = 'Expired' WHERE id = ?", [d.id]);
+      } catch (e) {}
+    }
+
+    res.json({ success: true, donation: d });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -205,7 +269,7 @@ exports.updateDonationStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  const validStatuses = ["Pending", "Active", "Picked Up", "Completed", "Cancelled"];
+  const validStatuses = ["Pending", "Active", "Picked Up", "Completed", "Cancelled", "Expired"];
   if (!status || !validStatuses.includes(status)) {
     return res.status(400).json({ message: "Invalid status provided." });
   }
