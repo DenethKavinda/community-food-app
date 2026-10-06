@@ -1,11 +1,15 @@
-import React from "react";
+import React, { useContext } from "react";
 import { View, Text, StyleSheet, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { AuthContext } from "../../context/AuthContext";
 
-export default function DonorGreeting({
-  userName = "Nawaz",
-  avatarUrl = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80",
-}) {
+export default function DonorGreeting({ userName: propUserName, avatarUrl: propAvatarUrl }) {
+  const { user } = useContext(AuthContext);
+
+  // Use logged-in user name (first name) or fallback
+  const displayName = propUserName || (user?.name ? user.name.split(" ")[0] : "Donor");
+  const avatarUri = propAvatarUrl || user?.avatar_url;
+
   const getGreetingTime = () => {
     const currentHour = new Date().getHours();
     if (currentHour < 12) return "Good Morning";
@@ -18,7 +22,7 @@ export default function DonorGreeting({
       <View style={styles.textColumn}>
         <Text style={styles.greetingText}>{getGreetingTime()}</Text>
         <View style={styles.nameRow}>
-          <Text style={styles.userName}>{userName}</Text>
+          <Text style={styles.userName}>{displayName}</Text>
           <Ionicons name="checkmark-circle" size={19} color="#087A3D" style={styles.checkIcon} />
         </View>
         <Text style={styles.subtext}>
@@ -27,7 +31,13 @@ export default function DonorGreeting({
       </View>
 
       <View style={styles.avatarContainer}>
-        <Image source={{ uri: avatarUrl }} style={styles.avatarImage} resizeMode="cover" />
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.avatarImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.avatarPlaceholder}>
+            <Ionicons name="person" size={26} color="#087A3D" />
+          </View>
+        )}
         <View style={styles.onlineBadge} />
       </View>
     </View>
@@ -81,6 +91,16 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     backgroundColor: "#E5E7EB",
+  },
+  avatarPlaceholder: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#E8F8EE",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#DCFCE7",
   },
   onlineBadge: {
     position: "absolute",

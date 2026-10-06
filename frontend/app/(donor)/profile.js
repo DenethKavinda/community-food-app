@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -16,13 +17,37 @@ import { useRouter } from "expo-router";
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import { AuthContext } from "../../context/AuthContext";
+import { getDonorStats } from "../../services/donorService";
 
 export default function DonorProfileScreen() {
   const router = useRouter();
-  const authContext = useContext(AuthContext);
+  const { user, logout } = useContext(AuthContext);
 
-  const avatarUrl =
-    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80";
+  const [stats, setStats] = useState({
+    totalDonations: 0,
+    totalQuantity: 0,
+    completedDonations: 0,
+    pickupsDone: 0,
+  });
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+
+  useEffect(() => {
+    loadDonorStats();
+  }, []);
+
+  const loadDonorStats = async () => {
+    setIsLoadingStats(true);
+    try {
+      const res = await getDonorStats();
+      if (res && res.success && res.stats) {
+        setStats(res.stats);
+      }
+    } catch (err) {
+      console.warn("Could not load donor stats:", err.message);
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
@@ -31,8 +56,8 @@ export default function DonorProfileScreen() {
         text: "Log Out",
         style: "destructive",
         onPress: () => {
-          if (authContext && authContext.logout) {
-            authContext.logout();
+          if (logout) {
+            logout();
           } else {
             router.push("/(auth)/login");
           }
@@ -76,16 +101,13 @@ export default function DonorProfileScreen() {
           <View style={styles.profileCard}>
             {/* Avatar Container with Badges */}
             <View style={styles.avatarWrapper}>
-              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} resizeMode="cover" />
-              
-              {/* Camera Icon Overlay Top Right */}
-              <TouchableOpacity
-                style={styles.cameraBadge}
-                onPress={() => Alert.alert("Profile Photo", "Change photo options.")}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="camera-outline" size={13} color="#374151" />
-              </TouchableOpacity>
+              {user?.avatar_url ? (
+                <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} resizeMode="cover" />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Ionicons name="person" size={40} color="#087A3D" />
+                </View>
+              )}
 
               {/* Verified Checkmark Bottom Right */}
               <View style={styles.verifiedBadge}>
@@ -93,30 +115,36 @@ export default function DonorProfileScreen() {
               </View>
             </View>
 
-            {/* Name & Rating */}
+            {/* Name & Role */}
             <View style={styles.nameRow}>
-              <Text style={styles.userName}>Nawaz M.</Text>
-              <Ionicons name="star" size={18} color="#F59E0B" style={{ marginLeft: 4 }} />
+              <Text style={styles.userName}>{user?.name || "Donor Account"}</Text>
             </View>
+
+            {/* Organization Name if present */}
+            {user?.organization_name ? (
+              <Text style={styles.orgText}>🏢 {user.organization_name}</Text>
+            ) : null}
 
             {/* Contributor Status & Location */}
             <View style={styles.metaRow}>
               <View style={styles.activeDotRow}>
                 <View style={styles.greenDot} />
-                <Text style={styles.activeContributorText}>Active Food Contributor</Text>
+                <Text style={styles.activeContributorText}>
+                  {user?.role ? `${user.role.charAt(0) + user.role.slice(1).toLowerCase()} Account` : "Donor Account"}
+                </Text>
               </View>
               <Text style={styles.bulletDot}>•</Text>
               <View style={styles.locationRow}>
                 <Ionicons name="location-outline" size={13} color="#6B7280" style={{ marginRight: 2 }} />
-                <Text style={styles.metaText}>Colombo 03, LK</Text>
+                <Text style={styles.metaText}>{user?.address || "Address Not Set"}</Text>
               </View>
             </View>
 
             {/* Email & Phone Row */}
             <View style={styles.contactRow}>
-              <Text style={styles.contactText}>✉️ nawaz@example.com</Text>
+              <Text style={styles.contactText}>✉️ {user?.email || "No email"}</Text>
               <Text style={styles.bulletDot}>•</Text>
-              <Text style={styles.contactText}>📱 +94 77 123 4567</Text>
+              <Text style={styles.contactText}>📱 {user?.phone || "No phone"}</Text>
             </View>
 
             {/* Edit Profile Button */}
@@ -130,44 +158,45 @@ export default function DonorProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Stats / Impact 3-Card Row */}
+          {/* Real Database Stats 3-Card Row */}
           <View style={styles.statsRow}>
-            {/* Card 1: Donations */}
+            {/* Card 1: Total Donations */}
             <View style={styles.statCard}>
               <View style={styles.statIconCircle}>
                 <MaterialCommunityIcons name="hand-heart" size={20} color="#087A3D" />
               </View>
-              <Text style={styles.statNumber}>24</Text>
+              {isLoadingStats ? (
+                <ActivityIndicator size="small" color="#087A3D" style={{ marginVertical: 4 }} />
+              ) : (
+                <Text style={styles.statNumber}>{stats.totalDonations}</Text>
+              )}
               <Text style={styles.statLabel}>Donations</Text>
             </View>
 
-            {/* Card 2: Portions Given */}
+            {/* Card 2: Total Quantity / Portions */}
             <View style={styles.statCard}>
               <View style={styles.statIconCircle}>
                 <Ionicons name="restaurant-outline" size={19} color="#087A3D" />
               </View>
-              <Text style={styles.statNumber}>120</Text>
+              {isLoadingStats ? (
+                <ActivityIndicator size="small" color="#087A3D" style={{ marginVertical: 4 }} />
+              ) : (
+                <Text style={styles.statNumber}>{stats.totalQuantity}</Text>
+              )}
               <Text style={styles.statLabel}>Portions Given</Text>
             </View>
 
-            {/* Card 3: Pickups Done */}
+            {/* Card 3: Pickups / Rescues Done */}
             <View style={styles.statCard}>
               <View style={styles.statIconCircle}>
                 <MaterialCommunityIcons name="truck-delivery-outline" size={20} color="#087A3D" />
               </View>
-              <Text style={styles.statNumber}>15</Text>
+              {isLoadingStats ? (
+                <ActivityIndicator size="small" color="#087A3D" style={{ marginVertical: 4 }} />
+              ) : (
+                <Text style={styles.statNumber}>{stats.pickupsDone}</Text>
+              )}
               <Text style={styles.statLabel}>Pickups Done</Text>
-            </View>
-          </View>
-
-          {/* Impact Banner Card */}
-          <View style={styles.impactCard}>
-            <View style={styles.impactIconCircle}>
-              <Ionicons name="leaf" size={20} color="#087A3D" />
-            </View>
-            <View style={styles.impactTextContainer}>
-              <Text style={styles.impactTitle}>Community Champion Level 2</Text>
-              <Text style={styles.impactSubtext}>Saved ~48kg CO₂ surplus this month!</Text>
             </View>
           </View>
 
@@ -186,10 +215,10 @@ export default function DonorProfileScreen() {
               </View>
               <View style={styles.menuTextContainer}>
                 <Text style={styles.menuTitle}>My Donations & History</Text>
-                <Text style={styles.menuSubtitle}>Review completed rescues</Text>
+                <Text style={styles.menuSubtitle}>Review registered food donations</Text>
               </View>
               <View style={styles.counterBadge}>
-                <Text style={styles.counterText}>24</Text>
+                <Text style={styles.counterText}>{stats.totalDonations}</Text>
               </View>
               <Feather name="chevron-right" size={16} color="#9CA3AF" style={{ marginLeft: 6 }} />
             </TouchableOpacity>
@@ -210,34 +239,18 @@ export default function DonorProfileScreen() {
               <Feather name="chevron-right" size={16} color="#9CA3AF" />
             </TouchableOpacity>
 
-            {/* Menu Item 3: Saved Pickup Addresses */}
+            {/* Menu Item 3: Primary Pickup Address */}
             <TouchableOpacity
               style={styles.menuItem}
-              onPress={() => Alert.alert("Addresses", "Saved pickup addresses.")}
+              onPress={() => router.push("/(donor)/edit-profile")}
               activeOpacity={0.8}
             >
               <View style={styles.menuIconBox}>
                 <Ionicons name="location-outline" size={20} color="#087A3D" />
               </View>
               <View style={styles.menuTextContainer}>
-                <Text style={styles.menuTitle}>Saved Pickup Addresses</Text>
-                <Text style={styles.menuSubtitle}>Colombo 03 (Primary Home Hub)</Text>
-              </View>
-              <Feather name="chevron-right" size={16} color="#9CA3AF" />
-            </TouchableOpacity>
-
-            {/* Menu Item 3: Notification Settings */}
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => Alert.alert("Notifications", "Notification preferences.")}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuIconBox}>
-                <Ionicons name="notifications-outline" size={20} color="#087A3D" />
-              </View>
-              <View style={styles.menuTextContainer}>
-                <Text style={styles.menuTitle}>Notification Settings</Text>
-                <Text style={styles.menuSubtitle}>Urgent food alerts & SMS</Text>
+                <Text style={styles.menuTitle}>Primary Pickup Address</Text>
+                <Text style={styles.menuSubtitle}>{user?.address || "Address Not Set"}</Text>
               </View>
               <Feather name="chevron-right" size={16} color="#9CA3AF" />
             </TouchableOpacity>
@@ -281,7 +294,7 @@ export default function DonorProfileScreen() {
             onPress={handleLogout}
             activeOpacity={0.85}
           >
-            <Ionicons name="log-out-outline" size={18} color="#DC2626" style={{ marginRight: 8 }} />
+            <Ionicons name="log-out-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
             <Text style={styles.logoutText}>Log Out</Text>
           </TouchableOpacity>
 
@@ -357,18 +370,21 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     backgroundColor: "#E5E7EB",
   },
-  cameraBadge: {
-    position: "absolute",
-    top: 0,
-    right: -2,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "#F3F4F6",
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
+  avatarPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#E8F8EE",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#DCFCE7",
+  },
+  orgText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4B5563",
+    marginBottom: 4,
   },
   verifiedBadge: {
     position: "absolute",
@@ -578,16 +594,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
+    backgroundColor: "#DC2626",
     borderRadius: 14,
     paddingVertical: 14,
     marginTop: 4,
+    shadowColor: "#DC2626",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
   logoutText: {
-    color: "#DC2626",
-    fontSize: 14,
+    color: "#FFFFFF",
+    fontSize: 15,
     fontWeight: "700",
   },
   versionText: {

@@ -33,3 +33,15 @@ export const deleteDonation = async (id) => {
   const response = await API.delete(`/donations/${id}`);
   return response.data;
 };
+
+// Fetch real donor statistics from backend
+export const getDonorStats = async () => {
+  const response = await API.get("/donations/stats");
+  return response.data;
+};
+
+// Update user profile details
+export const updateProfile = async (profileData) => {
+  const response = await API.put("/auth/profile", profileData);
+  return response.data;
+};

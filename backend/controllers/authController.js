@@ -132,9 +132,97 @@ exports.login = async (req, res) => {
         is_approved: user.is_approved,
         phone: user.phone,
         address: user.address,
+        organization_name: user.organization_name,
       },
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// GET LOGGED-IN USER PROFILE
+exports.getProfile = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  try {
+    const [users] = await pool.query(
+      "SELECT id, name, email, role, phone, address, organization_name, is_approved, created_at FROM users WHERE id = ?",
+      [req.user.id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ success: false, message: "User profile not found." });
+    }
+
+    res.json({
+      success: true,
+      user: users[0],
+    });
+  } catch (error) {
+    console.error("getProfile error:", error);
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+// UPDATE LOGGED-IN USER PROFILE
+exports.updateProfile = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const { name, email, phone, address, organization_name } = req.body;
+
+  if (!name || !name.trim()) {
+    return res.status(400).json({ success: false, message: "Full Name is required." });
+  }
+
+  try {
+    // Check if email already belongs to another user
+    if (email && email.trim()) {
+      const [existingUsers] = await pool.query(
+        "SELECT id FROM users WHERE email = ? AND id != ?",
+        [email.trim(), req.user.id]
+      );
+      if (existingUsers.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Email address is already in use by another account.",
+        });
+      }
+    }
+
+    await pool.query(
+      `UPDATE users
+       SET name = ?,
+           email = ?,
+           phone = ?,
+           address = ?,
+           organization_name = ?
+       WHERE id = ?`,
+      [
+        name.trim(),
+        email ? email.trim() : null,
+        phone ? phone.trim() : null,
+        address ? address.trim() : null,
+        organization_name ? organization_name.trim() : null,
+        req.user.id,
+      ]
+    );
+
+    const [updatedUsers] = await pool.query(
+      "SELECT id, name, email, role, phone, address, organization_name, is_approved, created_at FROM users WHERE id = ?",
+      [req.user.id]
+    );
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully.",
+      user: updatedUsers[0],
+    });
+  } catch (error) {
+    console.error("updateProfile error:", error);
+    res.status(500).json({ success: false, message: "Server error updating profile", error: error.message });
   }
 };

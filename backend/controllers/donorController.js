@@ -350,3 +350,56 @@ exports.getAvailableDonations = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+// 7. GET DONOR STATISTICS
+exports.getDonorStats = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const donor_id = req.user.id;
+
+  try {
+    // 1. Total Donations count
+    const [totalRes] = await pool.query(
+      "SELECT COUNT(*) AS totalDonations FROM donations WHERE donor_id = ?",
+      [donor_id]
+    );
+
+    // 2. Total Quantity / Portions Given
+    const [quantityRes] = await pool.query(
+      "SELECT SUM(CAST(quantity AS DECIMAL(10,2))) AS totalQuantity FROM donations WHERE donor_id = ?",
+      [donor_id]
+    );
+
+    // 3. Completed Donations count
+    const [completedRes] = await pool.query(
+      "SELECT COUNT(*) AS completedDonations FROM donations WHERE donor_id = ? AND status = 'Completed'",
+      [donor_id]
+    );
+
+    // 4. Pickups Done / In Progress
+    const [pickupsRes] = await pool.query(
+      "SELECT COUNT(*) AS pickupsDone FROM donations WHERE donor_id = ? AND status IN ('Picked Up', 'Completed')",
+      [donor_id]
+    );
+
+    const totalDonations = parseInt(totalRes[0]?.totalDonations) || 0;
+    const totalQuantity = parseFloat(quantityRes[0]?.totalQuantity) || 0;
+    const completedDonations = parseInt(completedRes[0]?.completedDonations) || 0;
+    const pickupsDone = parseInt(pickupsRes[0]?.pickupsDone) || 0;
+
+    res.json({
+      success: true,
+      stats: {
+        totalDonations,
+        totalQuantity,
+        completedDonations,
+        pickupsDone,
+      },
+    });
+  } catch (error) {
+    console.error("getDonorStats error:", error);
+    res.status(500).json({ success: false, message: "Server error fetching stats", error: error.message });
+  }
+};

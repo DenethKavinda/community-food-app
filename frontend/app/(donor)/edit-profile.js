@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useContext, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
-  Switch,
   ActivityIndicator,
   Alert,
 } from "react-native";
@@ -20,31 +19,43 @@ import * as Location from "expo-location";
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import LocationPickerModal, { reverseGeocodeCoords } from "../../components/donor/LocationPickerModal";
+import { AuthContext } from "../../context/AuthContext";
+import { updateProfile } from "../../services/donorService";
 
 export default function DonorEditProfileScreen() {
   const router = useRouter();
+  const { user, updateUserProfile } = useContext(AuthContext);
 
-  // Form State
-  const [name, setName] = useState("Nawaz M.");
-  const [email, setEmail] = useState("nawaz@example.com");
-  const [phone, setPhone] = useState("+94 77 123 4567");
-  const [address, setAddress] = useState("Colombo 03, Sri Lanka");
-  const [bio, setBio] = useState(
-    "Urban food safety volunteer & active donor sharing surplus meals."
-  );
+  // Form State initialized from authenticated user context
+  const [name, setName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [phone, setPhone] = useState(user?.phone || "");
+  const [address, setAddress] = useState(user?.address || "");
+  const [organizationName, setOrganizationName] = useState(user?.organization_name || "");
 
-  // Preference Toggles State
-  const [smsAlerts, setSmsAlerts] = useState(true);
-  const [publicLeaderboard, setPublicLeaderboard] = useState(true);
-
-  // Avatar Image State
-  const [avatarUri] = useState(
-    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80"
-  );
   const [isSaving, setIsSaving] = useState(false);
+
   // Location Picker State
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name || "");
+      setEmail(user.email || "");
+      setPhone(user.phone || "");
+      setAddress(user.address || "");
+      setOrganizationName(user.organization_name || "");
+    }
+  }, [user]);
+
+  const handleBackOrCancel = () => {
+    if (router.canGoBack && router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(donor)/profile");
+    }
+  };
 
   const handleFetchGPSLocation = async () => {
     setIsLocating(true);
@@ -67,38 +78,43 @@ export default function DonorEditProfileScreen() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert("Missing Name", "Please enter your full name.");
       return;
     }
 
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      Alert.alert(
-        "Profile Updated! 🎉",
-        "Your profile changes have been saved successfully.",
-        [
-          {
-            text: "OK",
-            onPress: () => router.push("/(donor)/profile"),
-          },
-        ]
-      );
-    }, 500);
-  };
+    try {
+      const res = await updateProfile({
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        organization_name: organizationName.trim(),
+      });
 
-  const handleSelectPhoto = () => {
-    Alert.alert(
-      "Change Profile Photo",
-      "Choose an option to update your avatar:",
-      [
-        { text: "Take Photo", onPress: () => console.log("Camera selected") },
-        { text: "Choose from Gallery", onPress: () => console.log("Gallery selected") },
-        { text: "Cancel", style: "cancel" },
-      ]
-    );
+      if (res && res.success && res.user) {
+        await updateUserProfile(res.user);
+        Alert.alert(
+          "Profile Updated! 🎉",
+          "Your profile changes have been saved successfully.",
+          [
+            {
+              text: "OK",
+              onPress: () => router.push("/(donor)/profile"),
+            },
+          ]
+        );
+      } else {
+        Alert.alert("Update Failed", res?.message || "Could not update profile.");
+      }
+    } catch (err) {
+      console.error("Save profile error:", err);
+      Alert.alert("Error", err.response?.data?.message || err.message || "Failed to update profile.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -110,7 +126,7 @@ export default function DonorEditProfileScreen() {
       <View style={styles.subHeader}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => router.back()}
+          onPress={handleBackOrCancel}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={22} color="#111827" />
@@ -121,9 +137,14 @@ export default function DonorEditProfileScreen() {
         <TouchableOpacity
           style={styles.saveCheckBtn}
           onPress={handleSave}
+          disabled={isSaving}
           activeOpacity={0.7}
         >
-          <Ionicons name="checkmark-circle" size={26} color="#087A3D" />
+          {isSaving ? (
+            <ActivityIndicator size="small" color="#087A3D" />
+          ) : (
+            <Ionicons name="checkmark-circle" size={26} color="#087A3D" />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -132,37 +153,20 @@ export default function DonorEditProfileScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* Avatar Edit Card */}
+          {/* Avatar Header Display */}
           <View style={styles.avatarCard}>
             <View style={styles.avatarWrapper}>
-              <Image source={{ uri: avatarUri }} style={styles.avatarImage} resizeMode="cover" />
-              <TouchableOpacity
-                style={styles.cameraCircle}
-                onPress={handleSelectPhoto}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="camera" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
+              {user?.avatar_url ? (
+                <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} resizeMode="cover" />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Ionicons name="person" size={40} color="#087A3D" />
+                </View>
+              )}
             </View>
-
-            <View style={styles.photoActionRow}>
-              <TouchableOpacity
-                style={styles.changePhotoBtn}
-                onPress={handleSelectPhoto}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="image-outline" size={14} color="#087A3D" style={{ marginRight: 4 }} />
-                <Text style={styles.changePhotoText}>Change Photo</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.removePhotoBtn}
-                onPress={() => Alert.alert("Remove Photo", "Reset to default avatar?")}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.removePhotoText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.avatarHintText}>
+              Account Role: {user?.role ? user.role : "DONOR"}
+            </Text>
           </View>
 
           {/* Personal Information Form Section */}
@@ -194,6 +198,7 @@ export default function DonorEditProfileScreen() {
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
+                  autoCapitalize="none"
                   placeholder="Enter email address"
                   placeholderTextColor="#9CA3AF"
                 />
@@ -211,6 +216,21 @@ export default function DonorEditProfileScreen() {
                   onChangeText={setPhone}
                   keyboardType="phone-pad"
                   placeholder="Enter phone number"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+            </View>
+
+            {/* Organization / Business Name */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Organization / Business Name</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="business-outline" size={18} color="#087A3D" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  value={organizationName}
+                  onChangeText={setOrganizationName}
+                  placeholder="Enter organization or business name (optional)"
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
@@ -253,53 +273,6 @@ export default function DonorEditProfileScreen() {
                 </View>
               </TouchableOpacity>
             </View>
-
-            {/* Bio / Donor Note */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>About / Organization Note</Text>
-              <View style={styles.multilineWrapper}>
-                <TextInput
-                  style={styles.multilineInput}
-                  value={bio}
-                  onChangeText={setBio}
-                  multiline
-                  numberOfLines={3}
-                  placeholder="Brief description about your surplus food contributions..."
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Preferences & Notifications Section */}
-          <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>PREFERENCES & PRIVACY</Text>
-
-            <View style={styles.toggleRowCard}>
-              <View style={styles.toggleTextContainer}>
-                <Text style={styles.toggleTitle}>Urgent Pickup SMS Alerts</Text>
-                <Text style={styles.toggleSubtitle}>Receive instant SMS when driver arrives</Text>
-              </View>
-              <Switch
-                value={smsAlerts}
-                onValueChange={setSmsAlerts}
-                trackColor={{ false: "#E5E7EB", true: "#DCFCE7" }}
-                thumbColor={smsAlerts ? "#087A3D" : "#9CA3AF"}
-              />
-            </View>
-
-            <View style={styles.toggleRowCard}>
-              <View style={styles.toggleTextContainer}>
-                <Text style={styles.toggleTitle}>Public Leaderboard Profile</Text>
-                <Text style={styles.toggleSubtitle}>Display badges on community hero list</Text>
-              </View>
-              <Switch
-                value={publicLeaderboard}
-                onValueChange={setPublicLeaderboard}
-                trackColor={{ false: "#E5E7EB", true: "#DCFCE7" }}
-                thumbColor={publicLeaderboard ? "#087A3D" : "#9CA3AF"}
-              />
-            </View>
           </View>
 
           {/* Action Buttons */}
@@ -317,7 +290,8 @@ export default function DonorEditProfileScreen() {
 
           <TouchableOpacity
             style={styles.cancelBtn}
-            onPress={() => router.back()}
+            onPress={handleBackOrCancel}
+            disabled={isSaving}
             activeOpacity={0.85}
           >
             <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -340,57 +314,6 @@ export default function DonorEditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  mapSelectBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#F0FDF4",
-    borderWidth: 1,
-    borderColor: "#DCFCE7",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginTop: 8,
-  },
-  mapSelectBtnInner: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  locationCardSelect: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: "#087A3D",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    shadowColor: "#087A3D",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  locationCardText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  mapPillBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#087A3D",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    marginLeft: 8,
-  },
-  mapPillText: {
-    fontSize: 11.5,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
   safeArea: {
     flex: 1,
     backgroundColor: "#FFFFFF",
@@ -436,54 +359,63 @@ const styles = StyleSheet.create({
   },
   avatarWrapper: {
     position: "relative",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   avatarImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: "#E5E7EB",
   },
-  cameraCircle: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#087A3D",
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
+  avatarPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#E8F8EE",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#DCFCE7",
   },
-  photoActionRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  changePhotoBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#DCFCE7",
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 16,
-  },
-  changePhotoText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#087A3D",
-  },
-  removePhotoBtn: {
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 16,
-  },
-  removePhotoText: {
+  avatarHintText: {
     fontSize: 12,
     fontWeight: "600",
     color: "#6B7280",
+  },
+  locationCardSelect: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#087A3D",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    shadowColor: "#087A3D",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  locationCardText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  mapPillBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#087A3D",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  mapPillText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   sectionContainer: {
     marginBottom: 16,
@@ -522,45 +454,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: "#111827",
-  },
-  multilineWrapper: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    padding: 12,
-    minHeight: 80,
-  },
-  multilineInput: {
-    fontSize: 13.5,
-    color: "#111827",
-    textAlignVertical: "top",
-    minHeight: 60,
-  },
-  toggleRowCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  toggleTextContainer: {
-    flex: 1,
-    marginRight: 10,
-  },
-  toggleTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  toggleSubtitle: {
-    fontSize: 12,
-    color: "#6B7280",
   },
   saveBtn: {
     flexDirection: "row",
