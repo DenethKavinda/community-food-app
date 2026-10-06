@@ -146,15 +146,15 @@ export default function DonorProfileScreen() {
               <Text style={styles.bulletDot}>•</Text>
               <View style={styles.locationRow}>
                 <Ionicons name="location-outline" size={13} color="#6B7280" style={{ marginRight: 2 }} />
-                <Text style={styles.metaText}>{user?.address || "Address Not Set"}</Text>
+                <Text style={styles.metaText} numberOfLines={1}>{user?.address || "Address Not Set"}</Text>
               </View>
             </View>
 
             {/* Email & Phone Row */}
             <View style={styles.contactRow}>
-              <Text style={styles.contactText}>✉️ {user?.email || "No email"}</Text>
+              <Text style={styles.contactText} numberOfLines={1}>✉️ {user?.email || "No email"}</Text>
               <Text style={styles.bulletDot}>•</Text>
-              <Text style={styles.contactText}>📱 {user?.phone || "No phone"}</Text>
+              <Text style={styles.contactText} numberOfLines={1}>📱 {user?.phone || "No phone"}</Text>
             </View>
 
             {/* Edit Profile Button */}
@@ -406,18 +406,25 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     marginBottom: 4,
+    maxWidth: "100%",
   },
   userName: {
     fontSize: 22,
     fontWeight: "800",
     color: "#111827",
     letterSpacing: -0.3,
+    textAlign: "center",
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
+    justifyContent: "center",
+    flexWrap: "wrap",
+    maxWidth: "100%",
+    marginBottom: 6,
+    paddingHorizontal: 8,
   },
   activeDotRow: {
     flexDirection: "row",
@@ -443,19 +450,27 @@ const styles = StyleSheet.create({
   locationRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexShrink: 1,
+    maxWidth: "100%",
   },
   metaText: {
     fontSize: 13,
     color: "#6B7280",
+    flexShrink: 1,
   },
   contactRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    maxWidth: "100%",
     marginBottom: 14,
+    paddingHorizontal: 8,
   },
   contactText: {
     fontSize: 12,
     color: "#6B7280",
+    flexShrink: 1,
   },
   editProfileBtn: {
     flexDirection: "row",

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import {
   View,
   Text,
@@ -19,9 +19,20 @@ import API from "../../services/api";
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import { getMyDonations, deleteDonation } from "../../services/donorService";
+import { AuthContext } from "../../context/AuthContext";
+
+const getImageUrl = (url) => {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file:") || url.startsWith("data:")) {
+    return url;
+  }
+  const baseUrl = API.defaults.baseURL ? API.defaults.baseURL.replace(/\/api\/?$/, "") : "http://localhost:5000";
+  return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+};
 
 export default function DonationHistoryScreen() {
   const router = useRouter();
+  const { user } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState("Recent Posts");
   const [donations, setDonations] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -33,9 +44,6 @@ export default function DonationHistoryScreen() {
   // Delete Confirmation Modal state
   const [deletingDonation, setDeletingDonation] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const avatarUrl =
-    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80";
 
   useEffect(() => {
     fetchDonations();
@@ -184,7 +192,13 @@ export default function DonationHistoryScreen() {
 
         <Text style={styles.subHeaderTitle}>My Donations</Text>
 
-        <Image source={{ uri: avatarUrl }} style={styles.avatar} resizeMode="cover" />
+        {user?.avatar_url ? (
+          <Image source={{ uri: getImageUrl(user.avatar_url) }} style={styles.avatar} resizeMode="cover" />
+        ) : (
+          <View style={styles.avatarPlaceholderHeader}>
+            <Ionicons name="person" size={18} color="#087A3D" />
+          </View>
+        )}
       </View>
 
       <View style={styles.mainContainer}>
@@ -527,6 +541,16 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: "#E5E7EB",
+  },
+  avatarPlaceholderHeader: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#E8F8EE",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#DCFCE7",
   },
   mainContainer: {
     flex: 1,
