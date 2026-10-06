@@ -15,12 +15,23 @@ import { StatusBar } from "expo-status-bar";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
+import * as ImagePicker from "expo-image-picker";
 
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import LocationPickerModal, { reverseGeocodeCoords } from "../../components/donor/LocationPickerModal";
 import { AuthContext } from "../../context/AuthContext";
 import { updateProfile } from "../../services/donorService";
+import API from "../../services/api";
+
+const getImageUrl = (url) => {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file:") || url.startsWith("data:")) {
+    return url;
+  }
+  const baseUrl = API.defaults.baseURL ? API.defaults.baseURL.replace(/\/api\/?$/, "") : "http://localhost:5000";
+  return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+};
 
 export default function DonorEditProfileScreen() {
   const router = useRouter();
@@ -32,6 +43,11 @@ export default function DonorEditProfileScreen() {
   const [phone, setPhone] = useState(user?.phone || "");
   const [address, setAddress] = useState(user?.address || "");
   const [organizationName, setOrganizationName] = useState(user?.organization_name || "");
+
+  // Avatar Photo State
+  const [avatarUri, setAvatarUri] = useState(user?.avatar_url || null);
+  const [avatarBase64, setAvatarBase64] = useState(null);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -46,6 +62,9 @@ export default function DonorEditProfileScreen() {
       setPhone(user.phone || "");
       setAddress(user.address || "");
       setOrganizationName(user.organization_name || "");
+      setAvatarUri(user.avatar_url || null);
+      setAvatarBase64(null);
+      setRemoveAvatar(false);
     }
   }, [user]);
 
@@ -54,6 +73,95 @@ export default function DonorEditProfileScreen() {
       router.back();
     } else {
       router.replace("/(donor)/profile");
+    }
+  };
+
+  const handleSelectPhotoOptions = () => {
+    const options = [
+      { text: "Take Photo", onPress: handleTakePhoto },
+      { text: "Choose from Gallery", onPress: handleChooseFromGallery },
+    ];
+
+    if (avatarUri || avatarBase64) {
+      options.push({
+        text: "Remove Photo",
+        style: "destructive",
+        onPress: () => {
+          setAvatarUri(null);
+          setAvatarBase64(null);
+          setRemoveAvatar(true);
+        },
+      });
+    }
+
+    options.push({ text: "Cancel", style: "cancel" });
+
+    Alert.alert("Profile Photo", "Select an option to update your profile photo:", options);
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Camera permission is required to take a profile photo.");
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        const base64Str = asset.base64
+          ? asset.base64.startsWith("data:image")
+            ? asset.base64
+            : `data:image/jpeg;base64,${asset.base64}`
+          : null;
+        setAvatarUri(asset.uri);
+        setAvatarBase64(base64Str);
+        setRemoveAvatar(false);
+      }
+    } catch (err) {
+      console.warn("Camera error:", err.message);
+      Alert.alert("Error", "Could not capture photo.");
+    }
+  };
+
+  const handleChooseFromGallery = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Gallery permission is required to select a profile photo.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        const base64Str = asset.base64
+          ? asset.base64.startsWith("data:image")
+            ? asset.base64
+            : `data:image/jpeg;base64,${asset.base64}`
+          : null;
+        setAvatarUri(asset.uri);
+        setAvatarBase64(base64Str);
+        setRemoveAvatar(false);
+      }
+    } catch (err) {
+      console.warn("Gallery error:", err.message);
+      Alert.alert("Error", "Could not pick image from gallery.");
     }
   };
 
@@ -86,13 +194,21 @@ export default function DonorEditProfileScreen() {
 
     setIsSaving(true);
     try {
-      const res = await updateProfile({
+      const payload = {
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim(),
         address: address.trim(),
         organization_name: organizationName.trim(),
-      });
+      };
+
+      if (avatarBase64) {
+        payload.avatar_base64 = avatarBase64;
+      } else if (removeAvatar) {
+        payload.avatar_url = null;
+      }
+
+      const res = await updateProfile(payload);
 
       if (res && res.success && res.user) {
         await updateUserProfile(res.user);
@@ -153,20 +269,49 @@ export default function DonorEditProfileScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* Avatar Header Display */}
+          {/* Avatar Edit Card */}
           <View style={styles.avatarCard}>
-            <View style={styles.avatarWrapper}>
-              {user?.avatar_url ? (
-                <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} resizeMode="cover" />
+            <TouchableOpacity
+              style={styles.avatarWrapper}
+              onPress={handleSelectPhotoOptions}
+              activeOpacity={0.8}
+            >
+              {avatarUri ? (
+                <Image source={{ uri: getImageUrl(avatarUri) }} style={styles.avatarImage} resizeMode="cover" />
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <Ionicons name="person" size={40} color="#087A3D" />
                 </View>
               )}
+              <View style={styles.cameraCircle}>
+                <Ionicons name="camera" size={16} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.photoActionRow}>
+              <TouchableOpacity
+                style={styles.changePhotoBtn}
+                onPress={handleSelectPhotoOptions}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="image-outline" size={14} color="#087A3D" style={{ marginRight: 4 }} />
+                <Text style={styles.changePhotoText}>Change Photo</Text>
+              </TouchableOpacity>
+
+              {(avatarUri || avatarBase64) && (
+                <TouchableOpacity
+                  style={styles.removePhotoBtn}
+                  onPress={() => {
+                    setAvatarUri(null);
+                    setAvatarBase64(null);
+                    setRemoveAvatar(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.removePhotoText}>Remove</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <Text style={styles.avatarHintText}>
-              Account Role: {user?.role ? user.role : "DONOR"}
-            </Text>
           </View>
 
           {/* Personal Information Form Section */}
@@ -359,25 +504,61 @@ const styles = StyleSheet.create({
   },
   avatarWrapper: {
     position: "relative",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   avatarImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: "#E5E7EB",
   },
   avatarPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: "#E8F8EE",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
     borderColor: "#DCFCE7",
   },
-  avatarHintText: {
+  cameraCircle: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#087A3D",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoActionRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  changePhotoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+  },
+  changePhotoText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#087A3D",
+  },
+  removePhotoBtn: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+  },
+  removePhotoText: {
     fontSize: 12,
     fontWeight: "600",
     color: "#6B7280",

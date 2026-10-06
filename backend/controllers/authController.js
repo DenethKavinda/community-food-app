@@ -1,6 +1,28 @@
 const pool = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const fs = require("fs");
+const path = require("path");
+
+// Ensure upload directory exists for avatars
+const avatarUploadsDir = path.join(__dirname, "../uploads/avatars");
+if (!fs.existsSync(avatarUploadsDir)) {
+  fs.mkdirSync(avatarUploadsDir, { recursive: true });
+}
+
+// Auto-ensure avatar_url column exists in users table
+const ensureAvatarColumn = async () => {
+  try {
+    const [cols] = await pool.query("SHOW COLUMNS FROM users LIKE 'avatar_url'");
+    if (cols.length === 0) {
+      await pool.query("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500) NULL AFTER organization_name");
+      console.log("Added avatar_url column to users table.");
+    }
+  } catch (err) {
+    console.warn("Could not check/add avatar_url column:", err.message);
+  }
+};
+ensureAvatarColumn();
 
 // REGISTER USER
 exports.register = async (req, res) => {
@@ -133,6 +155,7 @@ exports.login = async (req, res) => {
         phone: user.phone,
         address: user.address,
         organization_name: user.organization_name,
+        avatar_url: user.avatar_url || null,
       },
     });
   } catch (error) {
@@ -148,7 +171,7 @@ exports.getProfile = async (req, res) => {
 
   try {
     const [users] = await pool.query(
-      "SELECT id, name, email, role, phone, address, organization_name, is_approved, created_at FROM users WHERE id = ?",
+      "SELECT id, name, email, role, phone, address, organization_name, avatar_url, is_approved, created_at FROM users WHERE id = ?",
       [req.user.id]
     );
 
@@ -172,7 +195,7 @@ exports.updateProfile = async (req, res) => {
     return res.status(401).json({ success: false, message: "Authentication required." });
   }
 
-  const { name, email, phone, address, organization_name } = req.body;
+  const { name, email, phone, address, organization_name, avatar_url, avatar_base64 } = req.body;
 
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, message: "Full Name is required." });
@@ -193,13 +216,46 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
+    let finalAvatarUrl = undefined;
+
+    // Handle base64 avatar upload if provided
+    if (avatar_base64) {
+      try {
+        const matches = avatar_base64.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+        let ext = "jpg";
+        let base64Data = avatar_base64;
+
+        if (matches && matches.length === 3) {
+          ext = matches[1];
+          base64Data = matches[2];
+        }
+
+        const fileName = `avatar-user-${req.user.id}-${Date.now()}.${ext}`;
+        const filePath = path.join(avatarUploadsDir, fileName);
+
+        fs.writeFileSync(filePath, Buffer.from(base64Data, "base64"));
+        finalAvatarUrl = `/uploads/avatars/${fileName}`;
+      } catch (imgError) {
+        console.error("Avatar base64 save error:", imgError.message);
+      }
+    } else if (avatar_url !== undefined) {
+      finalAvatarUrl = avatar_url;
+    }
+
+    // Preserve existing avatar_url if not provided
+    if (finalAvatarUrl === undefined) {
+      const [current] = await pool.query("SELECT avatar_url FROM users WHERE id = ?", [req.user.id]);
+      finalAvatarUrl = current[0]?.avatar_url || null;
+    }
+
     await pool.query(
       `UPDATE users
        SET name = ?,
            email = ?,
            phone = ?,
            address = ?,
-           organization_name = ?
+           organization_name = ?,
+           avatar_url = ?
        WHERE id = ?`,
       [
         name.trim(),
@@ -207,12 +263,13 @@ exports.updateProfile = async (req, res) => {
         phone ? phone.trim() : null,
         address ? address.trim() : null,
         organization_name ? organization_name.trim() : null,
+        finalAvatarUrl,
         req.user.id,
       ]
     );
 
     const [updatedUsers] = await pool.query(
-      "SELECT id, name, email, role, phone, address, organization_name, is_approved, created_at FROM users WHERE id = ?",
+      "SELECT id, name, email, role, phone, address, organization_name, avatar_url, is_approved, created_at FROM users WHERE id = ?",
       [req.user.id]
     );
 

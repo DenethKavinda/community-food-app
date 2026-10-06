@@ -18,6 +18,16 @@ import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import { AuthContext } from "../../context/AuthContext";
 import { getDonorStats } from "../../services/donorService";
+import API from "../../services/api";
+
+const getImageUrl = (url) => {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file:") || url.startsWith("data:")) {
+    return url;
+  }
+  const baseUrl = API.defaults.baseURL ? API.defaults.baseURL.replace(/\/api\/?$/, "") : "http://localhost:5000";
+  return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+};
 
 export default function DonorProfileScreen() {
   const router = useRouter();
@@ -102,7 +112,7 @@ export default function DonorProfileScreen() {
             {/* Avatar Container with Badges */}
             <View style={styles.avatarWrapper}>
               {user?.avatar_url ? (
-                <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} resizeMode="cover" />
+                <Image source={{ uri: getImageUrl(user.avatar_url) }} style={styles.avatarImage} resizeMode="cover" />
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <Ionicons name="person" size={40} color="#087A3D" />

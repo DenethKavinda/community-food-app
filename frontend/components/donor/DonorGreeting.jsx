@@ -1,7 +1,16 @@
 import React, { useContext } from "react";
 import { View, Text, StyleSheet, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { AuthContext } from "../../context/AuthContext";
+import API from "../../services/api";
+
+const getImageUrl = (url) => {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file:") || url.startsWith("data:")) {
+    return url;
+  }
+  const baseUrl = API.defaults.baseURL ? API.defaults.baseURL.replace(/\/api\/?$/, "") : "http://localhost:5000";
+  return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+};
 
 export default function DonorGreeting({ userName: propUserName, avatarUrl: propAvatarUrl }) {
   const { user } = useContext(AuthContext);
@@ -32,7 +41,7 @@ export default function DonorGreeting({ userName: propUserName, avatarUrl: propA
 
       <View style={styles.avatarContainer}>
         {avatarUri ? (
-          <Image source={{ uri: avatarUri }} style={styles.avatarImage} resizeMode="cover" />
+          <Image source={{ uri: getImageUrl(avatarUri) }} style={styles.avatarImage} resizeMode="cover" />
         ) : (
           <View style={styles.avatarPlaceholder}>
             <Ionicons name="person" size={26} color="#087A3D" />
