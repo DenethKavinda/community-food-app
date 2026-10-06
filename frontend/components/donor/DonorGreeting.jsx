@@ -1,6 +1,7 @@
 import React, { useContext } from "react";
 import { View, Text, StyleSheet, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { AuthContext } from "../../context/AuthContext";
 import API from "../../services/api";
 
 const getImageUrl = (url) => {

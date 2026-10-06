@@ -10,19 +10,26 @@ if (!fs.existsSync(avatarUploadsDir)) {
   fs.mkdirSync(avatarUploadsDir, { recursive: true });
 }
 
-// Auto-ensure avatar_url column exists in users table
-const ensureAvatarColumn = async () => {
+// Auto-ensure avatar_url, latitude, longitude columns exist in users table
+const ensureUserColumns = async () => {
   try {
     const [cols] = await pool.query("SHOW COLUMNS FROM users LIKE 'avatar_url'");
     if (cols.length === 0) {
       await pool.query("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500) NULL AFTER organization_name");
-      console.log("Added avatar_url column to users table.");
+    }
+    const [latCols] = await pool.query("SHOW COLUMNS FROM users LIKE 'latitude'");
+    if (latCols.length === 0) {
+      await pool.query("ALTER TABLE users ADD COLUMN latitude DECIMAL(10, 8) NULL AFTER address");
+    }
+    const [lngCols] = await pool.query("SHOW COLUMNS FROM users LIKE 'longitude'");
+    if (lngCols.length === 0) {
+      await pool.query("ALTER TABLE users ADD COLUMN longitude DECIMAL(11, 8) NULL AFTER latitude");
     }
   } catch (err) {
-    console.warn("Could not check/add avatar_url column:", err.message);
+    console.warn("Could not check/add user table columns:", err.message);
   }
 };
-ensureAvatarColumn();
+ensureUserColumns();
 
 // REGISTER USER
 exports.register = async (req, res) => {
@@ -156,6 +163,8 @@ exports.login = async (req, res) => {
         address: user.address,
         organization_name: user.organization_name,
         avatar_url: user.avatar_url || null,
+        latitude: user.latitude || null,
+        longitude: user.longitude || null,
       },
     });
   } catch (error) {
@@ -171,7 +180,7 @@ exports.getProfile = async (req, res) => {
 
   try {
     const [users] = await pool.query(
-      "SELECT id, name, email, role, phone, address, organization_name, avatar_url, is_approved, created_at FROM users WHERE id = ?",
+      "SELECT id, name, email, role, phone, address, organization_name, avatar_url, latitude, longitude, is_approved, created_at FROM users WHERE id = ?",
       [req.user.id]
     );
 
@@ -195,7 +204,7 @@ exports.updateProfile = async (req, res) => {
     return res.status(401).json({ success: false, message: "Authentication required." });
   }
 
-  const { name, email, phone, address, organization_name, avatar_url, avatar_base64 } = req.body;
+  const { name, email, phone, address, organization_name, avatar_url, avatar_base64, latitude, longitude } = req.body;
 
   if (!name || !name.trim()) {
     return res.status(400).json({ success: false, message: "Full Name is required." });
@@ -248,6 +257,11 @@ exports.updateProfile = async (req, res) => {
       finalAvatarUrl = current[0]?.avatar_url || null;
     }
 
+    let parsedLat = latitude !== undefined && latitude !== null ? parseFloat(latitude) : null;
+    let parsedLng = longitude !== undefined && longitude !== null ? parseFloat(longitude) : null;
+    if (isNaN(parsedLat)) parsedLat = null;
+    if (isNaN(parsedLng)) parsedLng = null;
+
     await pool.query(
       `UPDATE users
        SET name = ?,
@@ -255,7 +269,9 @@ exports.updateProfile = async (req, res) => {
            phone = ?,
            address = ?,
            organization_name = ?,
-           avatar_url = ?
+           avatar_url = ?,
+           latitude = ?,
+           longitude = ?
        WHERE id = ?`,
       [
         name.trim(),
@@ -264,12 +280,14 @@ exports.updateProfile = async (req, res) => {
         address ? address.trim() : null,
         organization_name ? organization_name.trim() : null,
         finalAvatarUrl,
+        parsedLat,
+        parsedLng,
         req.user.id,
       ]
     );
 
     const [updatedUsers] = await pool.query(
-      "SELECT id, name, email, role, phone, address, organization_name, avatar_url, is_approved, created_at FROM users WHERE id = ?",
+      "SELECT id, name, email, role, phone, address, organization_name, avatar_url, latitude, longitude, is_approved, created_at FROM users WHERE id = ?",
       [req.user.id]
     );
 
