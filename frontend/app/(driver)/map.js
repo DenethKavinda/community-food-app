@@ -9,6 +9,7 @@ import {
   Platform,
   Linking,
   Image,
+  Alert,
 } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
@@ -16,6 +17,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Location from "expo-location";
+
+import API from "../../services/api";
 
 // Native maps only
 let MapView = null;
@@ -34,18 +37,36 @@ export default function DriverMap() {
   const router = useRouter();
 
   const [location, setLocation] = useState(null);
+  const [pickupLocation, setPickupLocation] = useState(null);
+  const [pickup, setPickup] = useState(null);
+  const [pickupDisplayAddress, setPickupDisplayAddress] = useState("");
+
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  // Pickup location
-  const pickupLocation = {
-    latitude: 6.9271,
-    longitude: 79.8612,
-  };
+  const [pickupLoading, setPickupLoading] = useState(true);
 
   useEffect(() => {
-    getCurrentLocation();
+    loadDriverData();
   }, []);
+
+  // ------------------------------------------------
+  // LOAD DRIVER GPS + REAL PICKUP DATA
+  // ------------------------------------------------
+
+  const loadDriverData = async () => {
+    setLoading(true);
+    setPickupLoading(true);
+
+    try {
+      await Promise.all([
+        getCurrentLocation(),
+        getDriverPickup(),
+      ]);
+    } finally {
+      setLoading(false);
+      setPickupLoading(false);
+    }
+  };
 
   // ------------------------------------------------
   // GET DRIVER GPS LOCATION
@@ -53,7 +74,6 @@ export default function DriverMap() {
 
   const getCurrentLocation = async () => {
     try {
-      setLoading(true);
       setPermissionDenied(false);
 
       const { status } =
@@ -61,7 +81,6 @@ export default function DriverMap() {
 
       if (status !== "granted") {
         setPermissionDenied(true);
-        setLoading(false);
         return;
       }
 
@@ -75,10 +94,98 @@ export default function DriverMap() {
         longitude: currentLocation.coords.longitude,
       });
     } catch (error) {
-      console.log("Location error:", error);
+      console.log("Driver location error:", error);
       setPermissionDenied(true);
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  // ------------------------------------------------
+  // GET REAL DRIVER PICKUP FROM BACKEND
+  // ------------------------------------------------
+
+  const getDriverPickup = async () => {
+    try {
+      const response = await API.get("/driver/pickups");
+
+      const pickups = response.data?.pickups || [];
+
+      if (pickups.length === 0) {
+        setPickup(null);
+        setPickupLocation(null);
+        return;
+      }
+
+      // For now use the newest available pickup.
+      const firstPickup = pickups[0];
+
+      const latitude = Number(firstPickup.pickup_latitude);
+      const longitude = Number(firstPickup.pickup_longitude);
+
+      if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude)
+      ) {
+        console.log(
+          "Pickup does not have valid GPS coordinates:",
+          firstPickup
+        );
+
+        setPickup(firstPickup);
+        setPickupLocation(null);
+        return;
+      }
+
+      setPickup(firstPickup);
+
+      
+
+      setPickupLocation({
+        latitude,
+        longitude,
+      });
+
+      try {
+        const addresses = await Location.reverseGeocodeAsync({
+          latitude,
+          longitude,
+        });
+
+        const address = addresses[0];
+
+        const formattedAddress = [
+          address?.name,
+          address?.street,
+          address?.city,
+          address?.region,
+        ]
+          .filter(Boolean)
+          .join(", ");
+
+        setPickupDisplayAddress(
+          formattedAddress ||
+            firstPickup.pickup_address ||
+            "Pickup address unavailable"
+        );
+      } catch (error) {
+        console.log("Pickup address lookup error:", error);
+
+        setPickupDisplayAddress(
+          firstPickup.pickup_address || "Pickup address unavailable"
+        );
+      }
+    } catch (error) {
+      console.log(
+        "Driver pickup loading error:",
+        error?.response?.data || error.message
+      );
+
+      Alert.alert(
+        "Pickup Error",
+        "Could not load the pickup location."
+      );
+
+      setPickup(null);
+      setPickupLocation(null);
     }
   };
 
@@ -87,6 +194,14 @@ export default function DriverMap() {
   // ------------------------------------------------
 
   const startNavigation = async () => {
+    if (!pickupLocation) {
+      Alert.alert(
+        "Location unavailable",
+        "Pickup GPS location is not available yet."
+      );
+      return;
+    }
+
     const destination =
       `${pickupLocation.latitude},${pickupLocation.longitude}`;
 
@@ -106,9 +221,57 @@ export default function DriverMap() {
   // CONFIRM PICKUP
   // ------------------------------------------------
 
-    const confirmPickup = () => {
-        router.push("/(driver)/verify-pickup");
-    };
+  const confirmPickup = async () => {
+    if (!pickup) {
+      Alert.alert("Pickup Error", "Pickup task is not available.");
+      return;
+    }
+
+    let destinationLatitude = pickup.destination_latitude;
+    let destinationLongitude = pickup.destination_longitude;
+
+    // If backend does not have destination GPS,
+    // convert the destination address into GPS coordinates.
+    if (
+      !destinationLatitude ||
+      !destinationLongitude
+    ) {
+      try {
+        const address = pickup.destination_address;
+
+        if (address) {
+          const results = await Location.geocodeAsync(address);
+
+          if (results.length > 0) {
+            destinationLatitude = results[0].latitude;
+            destinationLongitude = results[0].longitude;
+          }
+        }
+      } catch (error) {
+        console.log("Destination geocoding error:", error);
+      }
+    }
+
+    router.push({
+      pathname: "/(driver)/verify-pickup",
+      params: {
+        taskType: pickup.task_type || "",
+        claimId: pickup.claim_id ? String(pickup.claim_id) : "",
+        requestId: pickup.request_id ? String(pickup.request_id) : "",
+        destinationAddress: pickup.destination_address || "",
+        destinationLatitude: destinationLatitude
+          ? String(destinationLatitude)
+          : "",
+        destinationLongitude: destinationLongitude
+          ? String(destinationLongitude)
+          : "",
+      },
+    });
+  };
+
+  // ------------------------------------------------
+  // MAP REGION
+  // ------------------------------------------------
 
   const initialRegion = location
     ? {
@@ -117,12 +280,42 @@ export default function DriverMap() {
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
       }
-    : {
+    : pickupLocation
+    ? {
         latitude: pickupLocation.latitude,
         longitude: pickupLocation.longitude,
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
+      }
+    : {
+        latitude: 6.9271,
+        longitude: 79.8612,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
       };
+
+  // ------------------------------------------------
+  // LOADING
+  // ------------------------------------------------
+
+  if (loading || pickupLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="dark" />
+
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator
+            size="large"
+            color="#16A34A"
+          />
+
+          <Text style={styles.loadingText}>
+            Loading pickup location...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -166,18 +359,7 @@ export default function DriverMap() {
       {/* ================================================= */}
 
       <View style={styles.mapContainer}>
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator
-              size="large"
-              color="#16A34A"
-            />
-
-            <Text style={styles.loadingText}>
-              Getting your location...
-            </Text>
-          </View>
-        ) : Platform.OS === "web" ? (
+        {Platform.OS === "web" ? (
           <View style={styles.webMap}>
             <View style={styles.webMapCenter}>
               <Ionicons
@@ -190,14 +372,20 @@ export default function DriverMap() {
                 Pickup Location
               </Text>
 
-              <Text style={styles.webMapSubtitle}>
-                GPS location is available
-              </Text>
+              {pickupLocation ? (
+                <>
+                  <Text style={styles.webMapSubtitle}>
+                    Real pickup GPS location
+                  </Text>
 
-              {location && (
-                <Text style={styles.coordinates}>
-                  {location.latitude.toFixed(5)},{" "}
-                  {location.longitude.toFixed(5)}
+                  <Text style={styles.coordinates}>
+                    {pickupLocation.latitude.toFixed(5)},{" "}
+                    {pickupLocation.longitude.toFixed(5)}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.webMapSubtitle}>
+                  Pickup GPS location unavailable
                 </Text>
               )}
             </View>
@@ -222,23 +410,28 @@ export default function DriverMap() {
               </Marker>
             )}
 
-            {/* Pickup marker */}
-            <Marker
-              coordinate={pickupLocation}
-              title="ABC Restaurant"
-              description="123 Main Street, Colombo 03"
-            >
-              <View style={styles.pickupMarker}>
-                <Ionicons
-                  name="restaurant"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </View>
-            </Marker>
+            {/* REAL PICKUP MARKER */}
+            {pickupLocation && (
+              <Marker
+                coordinate={pickupLocation}
+                title={pickup?.donor_name || "Food Pickup"}
+                description={
+                  pickup?.pickup_address ||
+                  "Pickup location"
+                }
+              >
+                <View style={styles.pickupMarker}>
+                  <Ionicons
+                    name="restaurant"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                </View>
+              </Marker>
+            )}
 
             {/* Route */}
-            {location && (
+            {location && pickupLocation && (
               <Polyline
                 coordinates={[
                   location,
@@ -266,11 +459,16 @@ export default function DriverMap() {
 
           <View style={styles.restaurantInfo}>
             <Text style={styles.restaurantName}>
-              ABC Restaurant
+              {pickup?.donor_name || "Food Pickup"}
             </Text>
 
-            <Text style={styles.restaurantAddress}>
-              123 Main Street, Colombo 03
+            <Text
+              style={styles.restaurantAddress}
+              numberOfLines={2}
+            >
+              {pickupDisplayAddress ||
+                pickup?.pickup_address ||
+                "Pickup address unavailable"}
             </Text>
           </View>
 
@@ -293,7 +491,7 @@ export default function DriverMap() {
           />
 
           <Text style={styles.distanceText}>
-            5 km
+            GPS
           </Text>
         </View>
 
@@ -358,6 +556,7 @@ export default function DriverMap() {
             <Image
               source={{
                 uri:
+                  pickup?.image_url ||
                   "https://images.unsplash.com/photo-1547592180-85f173990554?w=300",
               }}
               style={styles.foodImage}
@@ -367,18 +566,20 @@ export default function DriverMap() {
           <View style={styles.foodInfo}>
             <View style={styles.foodTitleRow}>
               <Text style={styles.foodTitle}>
-                Rice & Curry
+                {pickup?.meal_name || "Food Donation"}
               </Text>
 
               <View style={styles.portionBadge}>
                 <Text style={styles.portionText}>
-                  10 portions
+                  {pickup?.quantity || 0}{" "}
+                  {pickup?.quantity_unit || "portions"}
                 </Text>
               </View>
             </View>
 
             <Text style={styles.foodDescription}>
-              Vegetarian cooked meals in boxes
+              {pickup?.notes ||
+                "Food donation available for pickup"}
             </Text>
           </View>
 
@@ -399,13 +600,14 @@ export default function DriverMap() {
             />
 
             <Text style={styles.timeText}>
-              Pickup Time: 11:30 AM
+              Pickup:{" "}
+              {pickup?.expiry_window || "Available"}
             </Text>
           </View>
 
           <View style={styles.scheduleBadge}>
             <Text style={styles.scheduleText}>
-              On Schedule
+              Available
             </Text>
           </View>
         </View>
@@ -479,6 +681,7 @@ export default function DriverMap() {
 
         <TouchableOpacity
           style={styles.navItem}
+          onPress={() => router.push("/(driver)/history")}
           activeOpacity={0.7}
         >
           <Ionicons
@@ -506,10 +709,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F7F9F7",
   },
 
-  // ---------------------------------------------------
   // HEADER
-  // ---------------------------------------------------
-
   header: {
     height: 58,
     backgroundColor: "#FFFFFF",
@@ -546,10 +746,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // ---------------------------------------------------
   // MAP
-  // ---------------------------------------------------
-
   mapContainer: {
     flex: 1,
     position: "relative",
@@ -572,10 +769,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // ---------------------------------------------------
   // WEB MAP
-  // ---------------------------------------------------
-
   webMap: {
     flex: 1,
     backgroundColor: "#DCEFE0",
@@ -599,6 +793,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 13,
     color: "#6B7280",
+    textAlign: "center",
   },
 
   coordinates: {
@@ -607,10 +802,7 @@ const styles = StyleSheet.create({
     color: "#374151",
   },
 
-  // ---------------------------------------------------
   // TOP PICKUP CARD
-  // ---------------------------------------------------
-
   pickupTopCard: {
     position: "absolute",
     top: 14,
@@ -672,10 +864,7 @@ const styles = StyleSheet.create({
     color: "#16A34A",
   },
 
-  // ---------------------------------------------------
   // MAP MARKERS
-  // ---------------------------------------------------
-
   driverMarker: {
     width: 32,
     height: 32,
@@ -705,10 +894,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // ---------------------------------------------------
   // DISTANCE
-  // ---------------------------------------------------
-
   distanceBadge: {
     position: "absolute",
     top: "45%",
@@ -729,10 +915,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // ---------------------------------------------------
   // MAP CONTROLS
-  // ---------------------------------------------------
-
   mapControls: {
     position: "absolute",
     right: 14,
@@ -763,10 +946,7 @@ const styles = StyleSheet.create({
     lineHeight: 27,
   },
 
-  // ---------------------------------------------------
   // PERMISSION
-  // ---------------------------------------------------
-
   permissionCard: {
     position: "absolute",
     left: 20,
@@ -797,10 +977,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // ---------------------------------------------------
   // BOTTOM CARD
-  // ---------------------------------------------------
-
   bottomCard: {
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 16,
@@ -844,6 +1021,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: "#111827",
+    flexShrink: 1,
   },
 
   portionBadge: {
@@ -851,6 +1029,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
+    marginLeft: 5,
   },
 
   portionText: {
@@ -865,10 +1044,7 @@ const styles = StyleSheet.create({
     color: "#6B7280",
   },
 
-  // ---------------------------------------------------
   // INFO
-  // ---------------------------------------------------
-
   infoSection: {
     marginTop: 13,
     flexDirection: "row",
@@ -900,10 +1076,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // ---------------------------------------------------
   // CONFIRM BUTTON
-  // ---------------------------------------------------
-
   confirmButton: {
     marginTop: 12,
     height: 48,
@@ -921,10 +1094,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // ---------------------------------------------------
   // GOOGLE MAPS BUTTON
-  // ---------------------------------------------------
-
   navigationButton: {
     marginTop: 8,
     height: 38,
@@ -944,10 +1114,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // ---------------------------------------------------
   // BOTTOM NAV
-  // ---------------------------------------------------
-
   bottomNav: {
     height: 64,
     backgroundColor: "#FFFFFF",

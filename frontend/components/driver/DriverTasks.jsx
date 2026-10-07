@@ -1,51 +1,59 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 
 import DriverTaskCard from "./DriverTaskCard";
-
-const tasks = [
-  {
-    id: "1",
-    title: "Fresh Meals Pickup",
-    portions: "25",
-    location: "Colombo",
-    time: "10:30 AM",
-    status: "PENDING",
-  },
-  {
-    id: "2",
-    title: "Restaurant Donation",
-    portions: "40",
-    location: "Dehiwala",
-    time: "12:00 PM",
-    status: "PENDING",
-  },
-  {
-    id: "3",
-    title: "Food Bank Delivery",
-    portions: "30",
-    location: "Nugegoda",
-    time: "2:30 PM",
-    status: "PENDING",
-  },
-];
+import API from "../../services/api";
 
 export default function DriverTasks({ onTaskPress }) {
+  const [tasks, setTasks] = useState([]);
+
+  useEffect(() => {
+    loadTasks();
+  }, []);
+
+  const loadTasks = async () => {
+    try {
+      const response = await API.get("/driver/pickups");
+
+      setTasks(response.data?.pickups || []);
+    } catch (error) {
+      console.error(
+        "Failed to load driver tasks:",
+        error?.response?.data || error.message
+      );
+
+      setTasks([]);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Today's Tasks</Text>
-        <Text style={styles.count}>{tasks.length} tasks</Text>
+
+        <Text style={styles.count}>
+          {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+        </Text>
       </View>
 
       {tasks.map((task) => (
         <DriverTaskCard
-          key={task.id}
-          title={task.title}
-          portions={task.portions}
-          location={task.location}
-          time={task.time}
-          status={task.status}
+          key={`${task.task_type}-${task.claim_id || task.request_id}-${task.donation_id}`}
+          title={task.meal_name || "Food Delivery"}
+          portions={`${task.quantity || 0} ${
+            task.quantity_unit || "portions"
+          }`}
+          location={
+            task.destination_address ||
+            task.pickup_address ||
+            "Location unavailable"
+          }
+          time={
+            task.expiry_window
+              ? task.expiry_window
+              : "Available now"
+          }
+          status="PENDING"
           onPress={() => onTaskPress?.(task)}
         />
       ))}
