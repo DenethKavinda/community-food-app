@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { AuthContext } from "../../context/AuthContext";
-import { fetchAvailableFoods } from "../../services/recipientService";
+import { fetchAvailableFoods, fetchNotifications } from "../../services/recipientService";
 import { getImageUrl } from "../../services/api";
 import { Image } from "react-native";
 
@@ -57,6 +57,17 @@ const LogoutIcon = () => (
   <Text style={styles.headerIcon}>↩</Text>
 );
 
+const BellIcon = ({ unreadCount }) => (
+  <View>
+    <Text style={styles.headerIcon}>🔔</Text>
+    {unreadCount > 0 && (
+      <View style={styles.notificationBadge}>
+        <Text style={styles.notificationBadgeText}>{unreadCount}</Text>
+      </View>
+    )}
+  </View>
+);
+
 // Categories are derived dynamically from the backend response — do not hard-code.
 
 // ── Placeholder food card image ───────────────────────────────────────────────
@@ -76,6 +87,7 @@ export default function RecipientDashboard() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [foods, setFoods] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -83,6 +95,13 @@ export default function RecipientDashboard() {
       .then((data) => setFoods(data.donations || []))
       .catch((err) => console.error("Failed to fetch foods:", err))
       .finally(() => setLoading(false));
+
+    fetchNotifications()
+      .then((data) => {
+        const unread = data.notifications?.filter(n => !n.is_read).length || 0;
+        setUnreadCount(unread);
+      })
+      .catch(console.error);
   }, []);
 
   // Build category list dynamically from fetched donations.
@@ -124,6 +143,12 @@ export default function RecipientDashboard() {
           <Text style={styles.userName} numberOfLines={1}>
             {user?.name ?? "Recipient"}
           </Text>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => router.push("/(recipient)/notifications")}
+          >
+            <BellIcon unreadCount={unreadCount} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerIconBtn}
             onPress={() => router.push("/(recipient)/profile")}
@@ -374,6 +399,23 @@ const styles = StyleSheet.create({
   headerIcon: {
     fontSize: 20,
     color: TEXT_PRIMARY,
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: -2,
+    right: -4,
+    backgroundColor: "#ef4444",
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notificationBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
+    paddingHorizontal: 3,
   },
 
   // ── Welcome ──

@@ -49,4 +49,26 @@ export const updateRecipientProfile = async (profileData) => {
   return response.data;
 };
 
+// Fetch a single donation by ID
+export const fetchDonationById = async (id) => {
+  const response = await API.get(`/donations/${id}`);
+  return response.data;
+};
 
+// Fetch recipient notifications
+export const fetchNotifications = async () => {
+  const response = await API.get("/recipient/notifications");
+  return response.data;
+};
+
+// Mark a single notification as read
+export const markNotificationAsRead = async (id) => {
+  const response = await API.patch(`/recipient/notifications/${id}/read`);
+  return response.data;
+};
+
+// Mark all notifications as read
+export const markAllNotificationsAsRead = async () => {
+  const response = await API.patch("/recipient/notifications/read-all");
+  return response.data;
+};

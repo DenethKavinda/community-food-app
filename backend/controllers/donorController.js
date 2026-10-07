@@ -139,6 +139,24 @@ exports.createDonation = async (req, res) => {
 
     const [newDonation] = await pool.query("SELECT * FROM donations WHERE id = ?", [result.insertId]);
 
+    // Create notifications for all recipients (fire and forget)
+    try {
+      const [recipients] = await pool.query("SELECT id FROM users WHERE role = 'RECIPIENT'");
+      if (recipients.length > 0) {
+        const d = newDonation[0];
+        const title = "New Food Donation Available";
+        const message = `${d.meal_name} - ${d.quantity} available`;
+        
+        const values = recipients.map(r => [r.id, d.id, title, message]);
+        await pool.query(
+          "INSERT INTO notifications (recipient_id, donation_id, title, message) VALUES ?",
+          [values]
+        );
+      }
+    } catch (notifErr) {
+      console.warn("Could not create notifications:", notifErr.message);
+    }
+
     res.status(201).json({
       message: "Donation post created successfully!",
       donation: newDonation[0],
