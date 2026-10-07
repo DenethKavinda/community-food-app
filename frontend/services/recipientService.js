@@ -72,3 +72,14 @@ export const markAllNotificationsAsRead = async () => {
   const response = await API.patch("/recipient/notifications/read-all");
   return response.data;
 };
+
+// Save a food-bank claim and its pickup/driver details.
+export const createFoodBankClaim = async (claimData) => {
+  const response = await API.post("/food-bank-claims", claimData);
+  return response.data;
+};
+
+export const fetchFoodBankClaimHistory = async () => {
+  const response = await API.get("/food-bank-claims/history");
+  return response.data;
+};

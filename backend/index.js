@@ -9,6 +9,7 @@ const donorRoutes = require("./routes/donorRoutes");
 const requestRoutes = require("./routes/requestRoutes");
 const recipientRoutes = require("./routes/recipientRoutes");
 const foodItemRoutes = require("./routes/foodItemRoutes");
+const foodBankClaimRoutes = require("./routes/foodBankClaimRoutes");
 
 // Ensure DB connection initializes
 require("./config/db");
@@ -32,6 +33,7 @@ app.use("/api/food-items", foodItemRoutes);
 app.use("/api/donations", donorRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/recipient", recipientRoutes);
+app.use("/api/food-bank-claims", foodBankClaimRoutes);
 
 // Health Check Route
 app.get("/", (req, res) => {

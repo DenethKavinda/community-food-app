@@ -8,6 +8,23 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+const foodBankClaimsTableReady = pool.query(`
+  CREATE TABLE IF NOT EXISTS food_bank_claims (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    food_bank_id INT NOT NULL,
+    donation_id INT NOT NULL,
+    requested_portions INT NOT NULL,
+    fulfillment_method ENUM('Volunteer Driver Delivery', 'Self Pickup') NOT NULL,
+    pickup_location VARCHAR(500) NOT NULL,
+    additional_notes TEXT NULL,
+    status ENUM('Pending', 'Assigned', 'Ready for Pickup', 'Completed', 'Cancelled', 'Rejected') DEFAULT 'Pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (food_bank_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (donation_id) REFERENCES donations(id) ON DELETE CASCADE
+  )
+`).catch((error) => console.error("Food-bank claims table setup failed:", error));
+
 // 1. CREATE NEW FOOD DONATION
 exports.createDonation = async (req, res) => {
   if (!req.user || !req.user.id) {
@@ -141,7 +158,9 @@ exports.createDonation = async (req, res) => {
 
     // Create notifications for all recipients (fire and forget)
     try {
-      const [recipients] = await pool.query("SELECT id FROM users WHERE role = 'RECIPIENT'");
+      const [recipients] = await pool.query(
+        "SELECT id FROM users WHERE UPPER(role) IN ('RECIPIENT', 'FOOD_BANK')"
+      );
       if (recipients.length > 0) {
         const d = newDonation[0];
         const title = "New Food Donation Available";
@@ -333,22 +352,34 @@ exports.deleteDonation = async (req, res) => {
 // 6. GET AVAILABLE DONATIONS (Recipient Dashboard — Pending or Active)
 exports.getAvailableDonations = async (req, res) => {
   try {
+    await foodBankClaimsTableReady;
     const [donations] = await pool.query(
-      `SELECT d.*, fi.category
+      `SELECT d.*,
+              COALESCE(NULLIF(fi.name, ''), d.meal_name) AS display_meal_name,
+              fi.category
        FROM donations d
        LEFT JOIN food_items fi ON d.food_item_id = fi.id
        WHERE d.status IN ('Pending', 'Active')
        ORDER BY d.created_at DESC`
     );
 
-    // Fetch overlapping requests to calculate remaining available portions
+    // Recipient requests and food-bank claims both reserve from the same donation balance.
     const [requests] = await pool.query(
       "SELECT donation_id, SUM(requested_portions) as reserved FROM requests WHERE status IN ('Pending', 'Approved') GROUP BY donation_id"
+    );
+    const [foodBankClaims] = await pool.query(
+      `SELECT donation_id, SUM(requested_portions) AS reserved
+       FROM food_bank_claims
+       WHERE status NOT IN ('Cancelled', 'Rejected')
+       GROUP BY donation_id`
     );
 
     const reservedMap = {};
     requests.forEach(r => {
       reservedMap[r.donation_id] = parseInt(r.reserved) || 0;
+    });
+    foodBankClaims.forEach(r => {
+      reservedMap[r.donation_id] = (reservedMap[r.donation_id] || 0) + (parseInt(r.reserved) || 0);
     });
 
     const enrichedDonations = donations.map(d => {
@@ -361,7 +392,7 @@ exports.getAvailableDonations = async (req, res) => {
         available_portions,
         category: d.category || null,
       };
-    });
+    }).filter(d => d.available_portions > 0);
 
     res.json({
       success: true,

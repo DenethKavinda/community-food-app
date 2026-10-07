@@ -71,7 +71,7 @@ export default function ConfirmRequest() {
 
   const item = {
     id: rawItem.id ?? "",
-    name: rawItem.meal_name ?? "",
+    name: rawItem.display_meal_name ?? rawItem.meal_name ?? "",
     availablePortions,
     quantity: rawItem.quantity ?? "",
     location: rawItem.location ?? "",
