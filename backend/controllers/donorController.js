@@ -316,7 +316,11 @@ exports.deleteDonation = async (req, res) => {
 exports.getAvailableDonations = async (req, res) => {
   try {
     const [donations] = await pool.query(
-      "SELECT * FROM donations WHERE status IN ('Pending', 'Active') ORDER BY created_at DESC"
+      `SELECT d.*, fi.category
+       FROM donations d
+       LEFT JOIN food_items fi ON d.food_item_id = fi.id
+       WHERE d.status IN ('Pending', 'Active')
+       ORDER BY d.created_at DESC`
     );
 
     // Fetch overlapping requests to calculate remaining available portions
@@ -336,7 +340,8 @@ exports.getAvailableDonations = async (req, res) => {
       
       return {
         ...d,
-        available_portions
+        available_portions,
+        category: d.category || null,
       };
     });
 
@@ -350,6 +355,7 @@ exports.getAvailableDonations = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 // 7. GET DONOR STATISTICS
 exports.getDonorStats = async (req, res) => {

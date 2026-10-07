@@ -10,10 +10,13 @@ import {
   Platform,
   Alert,
   TextInput,
+  Image,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { AuthContext } from "../../context/AuthContext";
 import { createRequest } from "../../services/recipientService";
+import { getImageUrl } from "../../services/api";
+
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const GREEN = "#2e7d32";
@@ -77,7 +80,11 @@ export default function ConfirmRequest() {
     emoji: "🥗",
     estTime: "—",
     serviceFee: "Free (Donation)",
+    imageUrl: getImageUrl(rawItem.image_url),
   };
+
+  const [imgError, setImgError] = useState(false);
+
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [portions, setPortions] = useState(1);
@@ -185,9 +192,18 @@ export default function ConfirmRequest() {
         <View style={styles.card}>
           {/* Food image + info row */}
           <View style={styles.foodRow}>
-            <View style={[styles.foodThumb, { backgroundColor: item.color }]}>
-              <Text style={styles.foodEmoji}>{item.emoji}</Text>
-            </View>
+            {item.imageUrl && !imgError ? (
+              <Image
+                source={{ uri: item.imageUrl }}
+                style={styles.foodThumb}
+                resizeMode="cover"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <View style={[styles.foodThumb, { backgroundColor: item.color }]}>
+                <Text style={styles.foodEmoji}>{item.emoji}</Text>
+              </View>
+            )}
             <View style={styles.foodInfo}>
               <Text style={styles.foodName}>{item.name}</Text>
               <View style={styles.availChip}>

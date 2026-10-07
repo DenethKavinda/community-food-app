@@ -4,6 +4,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { fetchRequestById, updateRequest } from '../../services/recipientService';
+import { getImageUrl } from '../../services/api';
 
 const GREEN = "#2e7d32";
 const GREEN_LIGHT = "#e8f5e9";
@@ -283,7 +284,7 @@ export default function RequestDetails() {
         <View style={styles.card}>
           {request.image_url ? (
             <Image
-              source={{ uri: request.image_url }}
+              source={{ uri: getImageUrl(request.image_url) }}
               style={styles.cardImage}
               contentFit="cover"
             />
