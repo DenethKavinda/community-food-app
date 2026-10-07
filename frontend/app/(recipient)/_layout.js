@@ -8,6 +8,8 @@ export default function RecipientLayout() {
       <Stack.Screen name="request-status" />
       <Stack.Screen name="my-requests" />
       <Stack.Screen name="request-details" />
+      <Stack.Screen name="profile" />
+      <Stack.Screen name="edit-profile" />
     </Stack>
   );
 }

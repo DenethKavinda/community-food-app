@@ -13,7 +13,9 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { AuthContext } from "../../context/AuthContext";
-import { fetchAvailableFoods } from "../../services/recipientService";
+import { fetchAvailableFoods, fetchNotifications } from "../../services/recipientService";
+import { getImageUrl } from "../../services/api";
+import { Image } from "react-native";
 
 // ── Food data is fetched from the backend API ─────────────────────────────────
 // (DUMMY_FOOD removed – data will come from /api/recipient/foods)
@@ -55,7 +57,18 @@ const LogoutIcon = () => (
   <Text style={styles.headerIcon}>↩</Text>
 );
 
-const CATEGORIES = ["All", "Prepared Food", "Fruits", "Bakery"];
+const BellIcon = ({ unreadCount }) => (
+  <View>
+    <Text style={styles.headerIcon}>🔔</Text>
+    {unreadCount > 0 && (
+      <View style={styles.notificationBadge}>
+        <Text style={styles.notificationBadgeText}>{unreadCount}</Text>
+      </View>
+    )}
+  </View>
+);
+
+// Categories are derived dynamically from the backend response — do not hard-code.
 
 // ── Placeholder food card image ───────────────────────────────────────────────
 const FoodPlaceholder = ({ color, name }) => (
@@ -74,6 +87,7 @@ export default function RecipientDashboard() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [foods, setFoods] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -81,7 +95,24 @@ export default function RecipientDashboard() {
       .then((data) => setFoods(data.donations || []))
       .catch((err) => console.error("Failed to fetch foods:", err))
       .finally(() => setLoading(false));
+
+    fetchNotifications()
+      .then((data) => {
+        const unread = data.notifications?.filter(n => !n.is_read).length || 0;
+        setUnreadCount(unread);
+      })
+      .catch(console.error);
   }, []);
+
+  // Build category list dynamically from fetched donations.
+  // Only include non-empty categories; always start with "All".
+  const categories = ["All", ...Array.from(
+    new Set(
+      foods
+        .map((d) => (d.category || "").trim())
+        .filter(Boolean)
+    )
+  )];
 
   const filteredFood = foods.filter((item) => {
     const matchesSearch =
@@ -89,7 +120,9 @@ export default function RecipientDashboard() {
       String(item.donor_id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.location || "").toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesCategory = activeCategory === "All";
+    const matchesCategory =
+      activeCategory === "All" ||
+      (item.category || "").trim().toLowerCase() === activeCategory.trim().toLowerCase();
 
     return matchesSearch && matchesCategory;
   });
@@ -110,7 +143,16 @@ export default function RecipientDashboard() {
           <Text style={styles.userName} numberOfLines={1}>
             {user?.name ?? "Recipient"}
           </Text>
-          <TouchableOpacity style={styles.headerIconBtn}>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => router.push("/(recipient)/notifications")}
+          >
+            <BellIcon unreadCount={unreadCount} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => router.push("/(recipient)/profile")}
+          >
             <PersonIcon />
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconBtn} onPress={logout}>
@@ -133,7 +175,7 @@ export default function RecipientDashboard() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* ── Search & Filter ── */}
+        {/* ── Search ── */}
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <SearchIcon />
@@ -145,9 +187,6 @@ export default function RecipientDashboard() {
               onChangeText={setSearchQuery}
             />
           </View>
-          <TouchableOpacity style={styles.filterBtn}>
-            <Text style={styles.filterBtnText}>⊞</Text>
-          </TouchableOpacity>
         </View>
 
         {/* ── Section title ── */}
@@ -160,7 +199,7 @@ export default function RecipientDashboard() {
           style={styles.categoryScroll}
           contentContainerStyle={styles.categoryContent}
         >
-          {CATEGORIES.map((cat) => (
+          {categories.map((cat) => (
             <TouchableOpacity
               key={cat}
               style={[
@@ -209,6 +248,8 @@ export default function RecipientDashboard() {
         )}
       </ScrollView>
 
+
+
       {/* ── Bottom Tab Bar ── */}
       <View style={styles.tabBar}>
         <TouchableOpacity style={styles.tabItem}>
@@ -224,6 +265,25 @@ export default function RecipientDashboard() {
   );
 }
 
+// ── Food card image loader with fallback ───────────────────────────────────────
+const FoodCardImage = ({ item }) => {
+  const [imgError, setImgError] = useState(false);
+  const imageUrl = getImageUrl(item?.image_url);
+
+  if (imageUrl && !imgError) {
+    return (
+      <Image
+        source={{ uri: imageUrl }}
+        style={styles.foodCardImage}
+        resizeMode="cover"
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return <FoodPlaceholder color={"#e8f5e9"} name={item?.meal_name || ""} />;
+};
+
 // ── Food Card Component ────────────────────────────────────────────────────────
 function FoodCard({ item, onView }) {
   const [cardHovered, setCardHovered] = useState(false);
@@ -238,10 +298,14 @@ function FoodCard({ item, onView }) {
       onMouseEnter={() => setCardHovered(true)}
       onMouseLeave={() => setCardHovered(false)}
     >
-      <FoodPlaceholder color={"#e8f5e9"} name={item.meal_name || ""} />
+      <FoodCardImage item={item} />
 
       <View style={styles.cardBody}>
+
         <Text style={styles.cardTitle}>{item.meal_name}</Text>
+        {(item.category || "").trim() ? (
+          <Text style={styles.cardCategory}>{item.category.trim()}</Text>
+        ) : null}
         <Text style={styles.cardQuantity}>
           {item.available_portions !== undefined ? `${item.available_portions} available` : item.quantity}
         </Text>
@@ -336,6 +400,23 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: TEXT_PRIMARY,
   },
+  notificationBadge: {
+    position: "absolute",
+    top: -2,
+    right: -4,
+    backgroundColor: "#ef4444",
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notificationBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
+    paddingHorizontal: 3,
+  },
 
   // ── Welcome ──
   welcomeRow: {
@@ -404,33 +485,6 @@ const styles = StyleSheet.create({
     color: TEXT_PRIMARY,
     height: 44,
   },
-  filterBtn: {
-    width: 44,
-    height: 44,
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filterBtnText: {
-    fontSize: 18,
-    color: TEXT_PRIMARY,
-  },
-  filterIconText: {
-    fontSize: 18,
-    color: TEXT_PRIMARY,
-  },
-
-  // ── Section title ──
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: TEXT_PRIMARY,
-    marginBottom: 12,
-  },
-
   // ── Categories ──
   categoryScroll: {
     marginBottom: 14,
@@ -501,6 +555,14 @@ const styles = StyleSheet.create({
     marginRight: 12,
     flexShrink: 0,
   },
+  foodCardImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 10,
+    marginRight: 12,
+    backgroundColor: "#e8f5e9",
+    flexShrink: 0,
+  },
   foodImageEmoji: {
     fontSize: 32,
   },
@@ -513,6 +575,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: TEXT_PRIMARY,
     marginBottom: 1,
+  },
+  cardCategory: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#388e3c",
+    backgroundColor: "#e8f5e9",
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 2,
+    overflow: "hidden",
   },
   cardQuantity: {
     fontSize: 13,

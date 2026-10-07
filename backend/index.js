@@ -7,6 +7,7 @@ const authController = require("./controllers/authController");
 const authRoutes = require("./routes/authRoutes");
 const donorRoutes = require("./routes/donorRoutes");
 const requestRoutes = require("./routes/requestRoutes");
+const recipientRoutes = require("./routes/recipientRoutes");
 const foodItemRoutes = require("./routes/foodItemRoutes");
 
 // Ensure DB connection initializes
@@ -25,10 +26,12 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // Auth & Profile Routes
 app.use("/api/auth", authRoutes);
 
+// Donor & Request & Recipient Routes
 // API Routes
 app.use("/api/food-items", foodItemRoutes);
 app.use("/api/donations", donorRoutes);
 app.use("/api/requests", requestRoutes);
+app.use("/api/recipient", recipientRoutes);
 
 // Health Check Route
 app.get("/", (req, res) => {

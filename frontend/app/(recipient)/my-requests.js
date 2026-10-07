@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { fetchMyRequests, cancelRequest } from '../../services/recipientService';
+import { getImageUrl } from '../../services/api';
 
 const GREEN = "#2e7d32";
 const GREEN_LIGHT = "#e8f5e9";
@@ -151,7 +152,7 @@ function RequestCard({ item, onCancel }) {
       onMouseLeave={() => setCardHovered(false)}
     >
       <Image 
-        source={{ uri: item.image_url || "https://images.unsplash.com/photo-1546833999-b9f581a1996d" }} 
+        source={{ uri: getImageUrl(item.image_url) || "https://images.unsplash.com/photo-1546833999-b9f581a1996d" }} 
         style={styles.cardImage} 
         contentFit="cover"
         transition={200}

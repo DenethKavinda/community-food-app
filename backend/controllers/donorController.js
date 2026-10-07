@@ -139,6 +139,24 @@ exports.createDonation = async (req, res) => {
 
     const [newDonation] = await pool.query("SELECT * FROM donations WHERE id = ?", [result.insertId]);
 
+    // Create notifications for all recipients (fire and forget)
+    try {
+      const [recipients] = await pool.query("SELECT id FROM users WHERE role = 'RECIPIENT'");
+      if (recipients.length > 0) {
+        const d = newDonation[0];
+        const title = "New Food Donation Available";
+        const message = `${d.meal_name} - ${d.quantity} available`;
+        
+        const values = recipients.map(r => [r.id, d.id, title, message]);
+        await pool.query(
+          "INSERT INTO notifications (recipient_id, donation_id, title, message) VALUES ?",
+          [values]
+        );
+      }
+    } catch (notifErr) {
+      console.warn("Could not create notifications:", notifErr.message);
+    }
+
     res.status(201).json({
       message: "Donation post created successfully!",
       donation: newDonation[0],
@@ -316,7 +334,11 @@ exports.deleteDonation = async (req, res) => {
 exports.getAvailableDonations = async (req, res) => {
   try {
     const [donations] = await pool.query(
-      "SELECT * FROM donations WHERE status IN ('Pending', 'Active') ORDER BY created_at DESC"
+      `SELECT d.*, fi.category
+       FROM donations d
+       LEFT JOIN food_items fi ON d.food_item_id = fi.id
+       WHERE d.status IN ('Pending', 'Active')
+       ORDER BY d.created_at DESC`
     );
 
     // Fetch overlapping requests to calculate remaining available portions
@@ -336,7 +358,8 @@ exports.getAvailableDonations = async (req, res) => {
       
       return {
         ...d,
-        available_portions
+        available_portions,
+        category: d.category || null,
       };
     });
 
@@ -350,6 +373,7 @@ exports.getAvailableDonations = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 // 7. GET DONOR STATISTICS
 exports.getDonorStats = async (req, res) => {
