@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+
 import {
   View,
   Text,
@@ -7,18 +8,90 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Linking,
 } from "react-native";
+
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import API from "../../services/api";
 
 export default function ConfirmDropoff() {
   const router = useRouter();
+  const params = useLocalSearchParams();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraVisible, setCameraVisible] = useState(false);
   const [cameraRef, setCameraRef] = useState(null);
   const [photoTaken, setPhotoTaken] = useState(false);
+
+  const [recentDeliveries, setRecentDeliveries] = useState([]);
+
+useEffect(() => {
+  loadRecentDeliveries();
+}, []);
+
+const loadRecentDeliveries = async () => {
+  try {
+    const response = await API.get("/driver/history");
+
+    const deliveries = response.data?.deliveries || [];
+
+    setRecentDeliveries(deliveries.slice(0, 3));
+  } catch (error) {
+    console.error(
+      "Failed to load recent deliveries:",
+      error?.response?.data || error.message
+    );
+
+    setRecentDeliveries([]);
+  }
+};
+
+  // =========================
+  // GOOGLE MAPS NAVIGATION
+  // =========================
+
+  const openGoogleMaps = async () => {
+    const latitude = Number(params.destinationLatitude);
+    const longitude = Number(params.destinationLongitude);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      Alert.alert(
+        "Location Unavailable",
+        "The destination GPS location is not available."
+      );
+      return;
+    }
+
+    const destination = `${latitude},${longitude}`;
+
+    const googleMapsUrl =
+      `https://www.google.com/maps/dir/?api=1` +
+      `&destination=${encodeURIComponent(destination)}` +
+      `&travelmode=driving`;
+
+    try {
+      const supported = await Linking.canOpenURL(googleMapsUrl);
+
+      if (!supported) {
+        Alert.alert(
+          "Google Maps Unavailable",
+          "Could not open Google Maps on this device."
+        );
+        return;
+      }
+
+      await Linking.openURL(googleMapsUrl);
+    } catch (error) {
+      console.log("Google Maps error:", error);
+
+      Alert.alert(
+        "Navigation Error",
+        "Could not open Google Maps navigation."
+      );
+    }
+  };
 
   // =========================
   // CAMERA
@@ -33,6 +106,7 @@ export default function ConfirmDropoff() {
           "Camera Permission",
           "Camera permission is required to take a delivery photo."
         );
+
         return;
       }
     }
@@ -59,7 +133,7 @@ export default function ConfirmDropoff() {
   // CONFIRM DROP-OFF
   // =========================
 
-  const confirmDropoff = () => {
+  const confirmDropoff = async () => {
     if (!photoTaken) {
       Alert.alert(
         "Photo Required",
@@ -68,8 +142,44 @@ export default function ConfirmDropoff() {
       return;
     }
 
-    // Directly go to Delivery History
-    router.push("/(driver)/history");
+    try {
+      const response = await API.patch("/driver/task-status", {
+        taskType: params.taskType,
+        claimId: params.claimId,
+        requestId: params.requestId,
+        status: "DELIVERED",
+      });
+
+      if (!response.data?.success) {
+        Alert.alert(
+          "Delivery Error",
+          response.data?.message || "Could not update delivery status."
+        );
+        return;
+      }
+
+      Alert.alert(
+        "Delivery Completed",
+        "The delivery has been successfully completed.",
+        [
+          {
+            text: "OK",
+            onPress: () => router.push("/(driver)/history"),
+          },
+        ]
+      );
+    } catch (error) {
+      console.error(
+        "Confirm drop-off error:",
+        error?.response?.data || error.message
+      );
+
+      Alert.alert(
+        "Delivery Error",
+        error?.response?.data?.message ||
+          "Could not update the delivery status. Please try again."
+      );
+    }
   };
 
   return (
@@ -125,7 +235,9 @@ export default function ConfirmDropoff() {
           <View style={styles.receiverInfo}>
 
             <Text style={styles.receiverName}>
-              Community Center
+              {params.taskType === "FOOD_BANK"
+                ? "Food Bank"
+                : "Recipient"}
             </Text>
 
             <View style={styles.infoRow}>
@@ -136,23 +248,73 @@ export default function ConfirmDropoff() {
               />
 
               <Text style={styles.infoText}>
-                456 Temple Road, Nugegoda
+                {params.destinationAddress ||
+                  "Destination address unavailable"}
               </Text>
             </View>
 
             <View style={styles.infoRow}>
               <Ionicons
-                name="person-outline"
+                name="navigate-outline"
                 size={14}
                 color="#6B7280"
               />
 
               <Text style={styles.infoText}>
-                Receiver: Sister Mary
+                {params.destinationLatitude &&
+                params.destinationLongitude
+                  ? "GPS destination available"
+                  : "GPS destination unavailable"}
               </Text>
             </View>
 
           </View>
+        </View>
+
+        {/* ================= NAVIGATION ================= */}
+
+        <Text style={styles.sectionLabel}>
+          DESTINATION NAVIGATION
+        </Text>
+
+        <View style={styles.navigationCard}>
+
+          <View style={styles.navigationInfo}>
+            <View style={styles.navigationIcon}>
+              <Ionicons
+                name="navigate"
+                size={22}
+                color="#16A34A"
+              />
+            </View>
+
+            <View style={styles.navigationTextContainer}>
+              <Text style={styles.navigationTitle}>
+                Navigate to Drop-off
+              </Text>
+
+              <Text style={styles.navigationDescription}>
+                Open Google Maps and get driving directions to the destination.
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.navigationButton}
+            onPress={openGoogleMaps}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="navigate-outline"
+              size={19}
+              color="#FFFFFF"
+            />
+
+            <Text style={styles.navigationButtonText}>
+              Open Google Maps
+            </Text>
+          </TouchableOpacity>
+
         </View>
 
         {/* ================= DELIVERY CONFIRMATION ================= */}
@@ -265,22 +427,32 @@ export default function ConfirmDropoff() {
         </View>
 
         <View style={styles.activityCard}>
+          {recentDeliveries.length === 0 ? (
+            <Text
+              style={{
+                paddingVertical: 20,
+                textAlign: "center",
+                color: "#9CA3AF",
+                fontSize: 11,
+              }}
+            >
+              No recent deliveries
+            </Text>
+          ) : (
+            recentDeliveries.map((delivery, index) => {
+              const date = delivery.completed_at
+                ? new Date(delivery.completed_at).toLocaleDateString()
+                : "Date unavailable";
 
-          <ActivityItem
-            title="Rice & Curry"
-            subtitle="Delivered • 2024-09-14"
-          />
-
-          <ActivityItem
-            title="Sandwiches"
-            subtitle="Delivered • 2024-09-13"
-          />
-
-          <ActivityItem
-            title="Fruits (Mixed)"
-            subtitle="Delivered • 2024-09-12"
-          />
-
+              return (
+                <ActivityItem
+                  key={`${delivery.task_type}-${delivery.donation_id}-${index}`}
+                  title={delivery.title || "Food Delivery"}
+                  subtitle={`Delivered • ${date}`}
+                />
+              );
+            })
+          )}
         </View>
 
       </ScrollView>
@@ -524,6 +696,7 @@ const styles = StyleSheet.create({
   },
 
   infoText: {
+    flex: 1,
     fontSize: 12,
     color: "#6B7280",
     marginLeft: 5,
@@ -536,6 +709,66 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#6B7280",
     letterSpacing: 0.5,
+  },
+
+  /* ================= NAVIGATION ================= */
+
+  navigationCard: {
+    marginTop: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    padding: 14,
+  },
+
+  navigationInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  navigationIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#ECFDF3",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  navigationTextContainer: {
+    flex: 1,
+    marginLeft: 10,
+  },
+
+  navigationTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+
+  navigationDescription: {
+    marginTop: 4,
+    fontSize: 10,
+    lineHeight: 15,
+    color: "#6B7280",
+  },
+
+  navigationButton: {
+    height: 45,
+    marginTop: 12,
+    borderRadius: 10,
+    backgroundColor: "#16A34A",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+
+  navigationButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   /* ================= DELIVERY ================= */

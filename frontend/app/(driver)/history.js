@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+
 import {
   View,
   Text,
@@ -7,8 +8,10 @@ import {
   ScrollView,
   Image,
 } from "react-native";
+
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import API from "../../services/api";
 
 const deliveries = [
   {
@@ -71,6 +74,117 @@ const deliveries = [
 export default function DeliveryHistory() {
   const router = useRouter();
 
+  const [deliveries, setDeliveries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState("All");
+
+  useEffect(() => {
+    loadDeliveryHistory();
+  }, []);
+
+  const loadDeliveryHistory = async () => {
+    try {
+      const response = await API.get("/driver/history");
+
+      if (response.data?.success) {
+        const history = Array.isArray(response.data.deliveries)
+          ? response.data.deliveries
+          : [];
+
+        const formattedDeliveries = history.map((item) => {
+          const completedDate = item.completed_at
+            ? new Date(item.completed_at)
+            : null;
+
+          return {
+            title: item.title || "Food Delivery",
+
+            status: item.status || "Completed",
+
+            portions:
+              item.quantity != null
+                ? `${item.quantity} ${
+                    item.quantity_unit || "portions"
+                  }`
+                : "Quantity unavailable",
+
+            date: completedDate
+              ? completedDate.toISOString().split("T")[0]
+              : "-",
+
+            from:
+              item.pickup_address ||
+              "Pickup address unavailable",
+
+            to:
+              item.destination_address ||
+              "Destination unavailable",
+
+            time: completedDate
+              ? completedDate.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "-",
+
+            location:
+              item.destination_address ||
+              "Location unavailable",
+
+            image:
+              item.image_url ||
+              "https://images.unsplash.com/photo-1547592180-85f173990554?w=300",
+          };
+        });
+
+        setDeliveries(formattedDeliveries);
+      } else {
+        setDeliveries([]);
+      }
+    } catch (error) {
+      console.error(
+        "Get driver history error:",
+        error?.response?.data || error.message
+      );
+
+      setDeliveries([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const getFilteredDeliveries = () => {
+  if (activeFilter === "All") {
+    return deliveries;
+  }
+
+  if (activeFilter === "Completed") {
+    return deliveries.filter(
+      (delivery) => delivery.status === "Completed"
+    );
+  }
+
+  if (activeFilter === "This Month") {
+    const now = new Date();
+
+    return deliveries.filter((delivery) => {
+      const deliveryDate = new Date(delivery.date);
+
+      return (
+        deliveryDate.getMonth() === now.getMonth() &&
+        deliveryDate.getFullYear() === now.getFullYear()
+      );
+    });
+  }
+
+  return deliveries;
+};
+
+const filteredDeliveries = getFilteredDeliveries();
+
+  
+
   return (
     <View style={styles.container}>
 
@@ -115,20 +229,59 @@ export default function DeliveryHistory() {
 
         <View style={styles.filtersRow}>
 
-          <TouchableOpacity style={styles.activeFilter}>
-            <Text style={styles.activeFilterText}>
+          <TouchableOpacity
+            style={
+              activeFilter === "All"
+                ? styles.activeFilter
+                : styles.filter
+            }
+            onPress={() => setActiveFilter("All")}
+          >
+            <Text
+              style={
+                activeFilter === "All"
+                  ? styles.activeFilterText
+                  : styles.filterText
+              }
+            >
               All
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.filter}>
-            <Text style={styles.filterText}>
+          <TouchableOpacity
+            style={
+              activeFilter === "Completed"
+                ? styles.activeFilter
+                : styles.filter
+            }
+            onPress={() => setActiveFilter("Completed")}
+          >
+            <Text
+              style={
+                activeFilter === "Completed"
+                  ? styles.activeFilterText
+                  : styles.filterText
+              }
+            >
               Completed
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.filter}>
-            <Text style={styles.filterText}>
+          <TouchableOpacity
+            style={
+              activeFilter === "This Month"
+                ? styles.activeFilter
+                : styles.filter
+            }
+            onPress={() => setActiveFilter("This Month")}
+          >
+            <Text
+              style={
+                activeFilter === "This Month"
+                  ? styles.activeFilterText
+                  : styles.filterText
+              }
+            >
               This Month
             </Text>
           </TouchableOpacity>
@@ -149,7 +302,7 @@ export default function DeliveryHistory() {
 
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>
-              28
+              {deliveries.length}
             </Text>
 
             <Text style={styles.statLabel}>
@@ -188,11 +341,18 @@ export default function DeliveryHistory() {
         <View style={styles.monthHeader}>
 
           <Text style={styles.monthTitle}>
-            SEPTEMBER 2024
+            {deliveries.length > 0
+              ? new Date(deliveries[0].date)
+                  .toLocaleDateString("en-US", {
+                    month: "long",
+                    year: "numeric",
+                  })
+                  .toUpperCase()
+              : "DELIVERY HISTORY"}
           </Text>
 
           <Text style={styles.taskCount}>
-            5 Completed Tasks
+            {deliveries.length} Completed Tasks
           </Text>
 
         </View>
@@ -200,14 +360,22 @@ export default function DeliveryHistory() {
         {/* ================= DELIVERY LIST ================= */}
 
         <View style={styles.deliveryList}>
-
-          {deliveries.map((delivery, index) => (
-            <DeliveryCard
-              key={index}
-              delivery={delivery}
-            />
-          ))}
-
+          {loading ? (
+            <Text style={styles.emptyText}>
+              Loading delivery history...
+            </Text>
+          ) : deliveries.length === 0 ? (
+            <Text style={styles.emptyText}>
+              No completed deliveries found.
+            </Text>
+          ) : (
+            filteredDeliveries.map((delivery, index) => (
+              <DeliveryCard
+                key={`${delivery.date}-${index}`}
+                delivery={delivery}
+              />
+            ))
+          )}
         </View>
 
       </ScrollView>
@@ -714,6 +882,13 @@ const styles = StyleSheet.create({
   activeNavText: {
     color: "#16A34A",
     fontWeight: "700",
+  },
+
+  emptyText: {
+    textAlign: "center",
+    color: "#9CA3AF",
+    fontSize: 13,
+    paddingVertical: 30,
   },
 
 });

@@ -16,7 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import {
   CameraView,
   useCameraPermissions,
@@ -24,6 +24,7 @@ import {
 
 export default function VerifyPickup() {
   const router = useRouter();
+  const params = useLocalSearchParams();
 
   // =====================================================
   // CHECKLIST
@@ -149,7 +150,17 @@ export default function VerifyPickup() {
         return;
     }
 
-    router.push("/(driver)/confirm-dropoff");
+    router.push({
+      pathname: "/(driver)/confirm-dropoff",
+      params: {
+        taskType: params.taskType || "",
+        claimId: params.claimId || "",
+        requestId: params.requestId || "",
+        destinationAddress: params.destinationAddress || "",
+        destinationLatitude: params.destinationLatitude || "",
+        destinationLongitude: params.destinationLongitude || "",
+      },
+    });
   };
 
   // =====================================================
