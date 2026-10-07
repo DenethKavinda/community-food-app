@@ -5,6 +5,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 
 // Routes for Food Donations
 router.post("/", authMiddleware, donorController.createDonation);
+router.get("/stats", authMiddleware, donorController.getDonorStats);
 router.get("/my-donations", authMiddleware, donorController.getDonorDonations);
 router.get("/available", authMiddleware, donorController.getAvailableDonations);
 router.get("/:id", authMiddleware, donorController.getDonationById);

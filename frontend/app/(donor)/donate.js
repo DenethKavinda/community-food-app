@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
+  ActivityIndicator,
   Alert,
   Platform,
 } from "react-native";
@@ -14,10 +15,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import * as Location from "expo-location";
 
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import DonationSuccess from "../../components/donor/DonationSuccess";
+import LocationPickerModal, { reverseGeocodeCoords } from "../../components/donor/LocationPickerModal";
+import FoodItemSelector from "../../components/donor/FoodItemSelector";
+import ExpiryPickerModal from "../../components/donor/ExpiryPickerModal";
+import QuantityUnitSelector from "../../components/donor/QuantityUnitSelector";
+import { fetchFoodItems } from "../../services/foodItemService";
+import { createDonation } from "../../services/donorService";
 
 export default function DonateFoodScreen() {
   const router = useRouter();
@@ -26,11 +34,69 @@ export default function DonateFoodScreen() {
   const [location, setLocation] = useState("Colombo 03, Sri Lanka");
   const [mealName, setMealName] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [quantityUnit, setQuantityUnit] = useState("");
   const [expiryWindow, setExpiryWindow] = useState("Today, 02:00 PM");
   const [notes, setNotes] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [createdDonation, setCreatedDonation] = useState(null);
+
+  // Expiry Picker Modal State
+  const [isExpiryModalVisible, setIsExpiryModalVisible] = useState(false);
+
+  // Reusable Food Item State
+  const [foodItems, setFoodItems] = useState([]);
+  const [selectedFoodItem, setSelectedFoodItem] = useState(null);
+  const [isLoadingFoodItems, setIsLoadingFoodItems] = useState(true);
+
+  // Map & GPS Location State
+  const [isMapModalVisible, setIsMapModalVisible] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+
+  // Load Saved Food Items for Donor
+  const loadFoodItems = async () => {
+    setIsLoadingFoodItems(true);
+    try {
+      const data = await fetchFoodItems();
+      const items = data && data.foodItems ? data.foodItems : (Array.isArray(data) ? data : []);
+      setFoodItems(items);
+      if (items.length > 0) {
+        setSelectedFoodItem(items[0]);
+        setMealName(items[0].name);
+      }
+    } catch (err) {
+      console.warn("Could not load food items:", err.message);
+    } finally {
+      setIsLoadingFoodItems(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFoodItems();
+  }, []);
+
+  // Fetch Current GPS Location
+  const handleFetchGPSLocation = async () => {
+    setIsLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Location permission is required to fetch current GPS location.");
+        setIsLocating(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const address = await reverseGeocodeCoords(loc.coords.latitude, loc.coords.longitude);
+      setLocation(address);
+    } catch (err) {
+      console.warn("GPS location error:", err.message);
+      Alert.alert("Location Error", "Could not determine location automatically. Please select on Google Map.");
+    } finally {
+      setIsLocating(false);
+    }
+  };
 
   // Real Image Picker (File Browser on Web / Base64 Data URL)
   const handleSelectImage = () => {
@@ -63,56 +129,73 @@ export default function DonateFoodScreen() {
 
   // Form Submission Handler
   const handleSubmit = async () => {
-    if (!mealName.trim() || !quantity.trim()) {
-      Alert.alert("Required Fields", "Please enter both Meal Name and Quantity.");
+    const finalMealName = selectedFoodItem ? selectedFoodItem.name : mealName.trim();
+    const foodItemId = selectedFoodItem ? selectedFoodItem.id : null;
+    const parsedQty = parseFloat(quantity);
+
+    if (!finalMealName) {
+      Alert.alert("Required Field", "Please select a Food Item.");
+      return;
+    }
+
+    if (isNaN(parsedQty) || parsedQty <= 0) {
+      Alert.alert("Validation Error", "Please enter a valid numeric quantity greater than 0.");
+      return;
+    }
+
+    if (!quantityUnit) {
+      Alert.alert("Validation Error", "Please select a unit (e.g. portions, packets, kg).");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/donations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          meal_name: mealName.trim(),
-          quantity: quantity.trim(),
-          location: location.trim() || "Colombo 03, Sri Lanka",
-          expiry_window: expiryWindow || "Today, 02:00 PM",
-          notes: notes.trim(),
-          image_base64: selectedImage && selectedImage.startsWith("data:image") ? selectedImage : null,
-          image_url: selectedImage && !selectedImage.startsWith("data:image") ? selectedImage : null,
-          donor_id: 1,
-        }),
+      const data = await createDonation({
+        food_item_id: foodItemId,
+        meal_name: finalMealName,
+        quantity: parsedQty,
+        quantity_unit: quantityUnit.toLowerCase(),
+        location: location.trim() || "Colombo 03, Sri Lanka",
+        expiry_window: expiryWindow || "Today, 02:00 PM",
+        notes: notes.trim(),
+        image_base64: selectedImage && selectedImage.startsWith("data:image") ? selectedImage : null,
+        image_url: selectedImage && !selectedImage.startsWith("data:image") ? selectedImage : null,
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
+      if (data && data.donation) {
+        setCreatedDonation(data.donation);
         setIsSubmitting(false);
         setIsSubmitted(true);
       } else {
-        Alert.alert("Submission Failed", data.message || "Failed to submit donation.");
+        Alert.alert("Submission Failed", data?.message || "Failed to submit donation.");
         setIsSubmitting(false);
       }
     } catch (error) {
-      console.warn("Backend connection error, falling back to local view:", error.message);
+      console.warn("Donation submit error:", error.message);
+      Alert.alert(
+        "Submission Error",
+        error.response?.data?.message || error.message || "Failed to submit donation."
+      );
       setIsSubmitting(false);
-      setIsSubmitted(true);
     }
   };
 
   if (isSubmitted) {
+    const realId = createdDonation?.id
+      ? `#FD${String(createdDonation.id).padStart(5, "0")}`
+      : null;
+    const formattedQtyDisplay = quantityUnit
+      ? `${quantity} ${quantityUnit.charAt(0).toUpperCase() + quantityUnit.slice(1)}`
+      : `${quantity}`;
     return (
       <DonationSuccess
-        donationId="#FD00123"
-        postedDate={new Date().toISOString().split("T")[0]}
-        mealName={mealName.trim() || "Fresh Artisan Bread & Pastries"}
-        quantity={quantity.trim() || "~12 kg"}
-        expiryWindow={expiryWindow || "Today, 5:00 PM – 7:30 PM"}
-        image={selectedImage || "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=300&q=80"}
+        donationId={realId}
+        postedDate={createdDonation?.created_at ? createdDonation.created_at.split("T")[0] : new Date().toISOString().split("T")[0]}
+        mealName={mealName.trim() || (selectedFoodItem ? selectedFoodItem.name : "Fresh Food Donation")}
+        quantity={formattedQtyDisplay}
+        expiryWindow={expiryWindow || "Today, 05:00 PM"}
+        image={selectedImage || "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80"}
         onBackToDashboard={() => router.push("/(donor)")}
         onViewDonation={() => setIsSubmitted(false)}
       />
@@ -167,65 +250,64 @@ export default function DonateFoodScreen() {
 
           {/* Form Fields */}
           <View style={styles.formContainer}>
-            {/* 1. Pickup Location */}
+            {/* 1. Pickup Location (Google Map / GPS Only) */}
             <View style={styles.fieldGroup}>
               <View style={styles.labelRow}>
                 <Text style={styles.label}>Pickup Location</Text>
-                <View style={styles.activeHubBadge}>
-                  <Ionicons name="checkmark-circle" size={12} color="#087A3D" />
-                  <Text style={styles.activeHubText}>Active Hub</Text>
-                </View>
-              </View>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="location-outline" size={18} color="#087A3D" style={styles.inputLeftIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={location}
-                  onChangeText={setLocation}
-                  placeholder="Enter pickup location"
-                  placeholderTextColor="#9CA3AF"
-                />
-                <TouchableOpacity
-                  style={styles.inputRightIconBtn}
-                  onPress={() => setLocation("Colombo 03, Sri Lanka")}
+                <TouchableOpacity 
+                  onPress={handleFetchGPSLocation}
+                  disabled={isLocating}
+                  style={styles.activeHubBadge}
+                  activeOpacity={0.7}
                 >
-                  <Ionicons name="locate-outline" size={18} color="#6B7280" />
+                  {isLocating ? (
+                    <ActivityIndicator size="small" color="#087A3D" />
+                  ) : (
+                    <Ionicons name="navigate" size={13} color="#087A3D" />
+                  )}
+                  <Text style={styles.activeHubText}>
+                    {isLocating ? "Locating..." : "Use Current GPS"}
+                  </Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Clickable Location Card (Opens Map Picker) */}
+              <TouchableOpacity
+                style={styles.locationCardSelect}
+                onPress={() => setIsMapModalVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="location-sharp" size={20} color="#087A3D" style={{ marginRight: 8 }} />
+                <Text style={styles.locationCardText} numberOfLines={1}>
+                  {location || "Select location on Google Map"}
+                </Text>
+                <View style={styles.mapPillBadge}>
+                  <MaterialCommunityIcons name="google-maps" size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.mapPillText}>Google Map</Text>
+                </View>
+              </TouchableOpacity>
             </View>
 
-            {/* 2. Food or Meal Name */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Food or Meal Name</Text>
-              <View style={styles.inputWrapper}>
-                <MaterialCommunityIcons name="silverware-fork-knife" size={18} color="#087A3D" style={styles.inputLeftIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={mealName}
-                  onChangeText={setMealName}
-                  placeholder="e.g. Rice & Curry or Fresh Baked Breads"
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-            </View>
+            {/* 2. Food Item Selector Dropdown */}
+            <FoodItemSelector
+              selectedItem={selectedFoodItem}
+              onSelectItem={(item) => {
+                setSelectedFoodItem(item);
+                setMealName(item ? item.name : "");
+              }}
+              foodItems={foodItems}
+              isLoading={isLoadingFoodItems}
+              onRefreshItems={loadFoodItems}
+            />
 
-            {/* 3. Quantity & Portions */}
-            <View style={styles.fieldGroup}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>Quantity & Portions</Text>
-                <Text style={styles.subLabel}>Approximate servings</Text>
-              </View>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="people-outline" size={18} color="#087A3D" style={styles.inputLeftIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  placeholder="e.g. 10 portions (or 3 catering boxes)"
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-            </View>
+            {/* 3. Numeric Quantity & Unit Selector */}
+            <QuantityUnitSelector
+              quantity={quantity}
+              onChangeQuantity={setQuantity}
+              unit={quantityUnit}
+              onChangeUnit={setQuantityUnit}
+              category={selectedFoodItem ? selectedFoodItem.category : null}
+            />
 
             {/* 4. Consume Before (Expiry Window) */}
             <View style={styles.fieldGroup}>
@@ -245,8 +327,12 @@ export default function DonateFoodScreen() {
                   placeholder="Select expiry time"
                   placeholderTextColor="#9CA3AF"
                 />
-                <TouchableOpacity style={styles.inputRightIconBtn}>
-                  <Ionicons name="calendar-outline" size={18} color="#6B7280" />
+                <TouchableOpacity
+                  style={styles.inputRightIconBtn}
+                  onPress={() => setIsExpiryModalVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="calendar-outline" size={20} color="#087A3D" />
                 </TouchableOpacity>
               </View>
             </View>
@@ -333,6 +419,22 @@ export default function DonateFoodScreen() {
         {/* Fixed Bottom Navigation Bar with "Donate" active */}
         <DonorBottomNav initialTab="Donate" />
       </View>
+
+      {/* Location Picker Modal */}
+      <LocationPickerModal
+        visible={isMapModalVisible}
+        onClose={() => setIsMapModalVisible(false)}
+        initialAddress={location}
+        onSelectLocation={(selected) => setLocation(selected.address)}
+      />
+
+      {/* Interactive Expiry Calendar & Timer Picker Modal */}
+      <ExpiryPickerModal
+        visible={isExpiryModalVisible}
+        onClose={() => setIsExpiryModalVisible(false)}
+        currentValue={expiryWindow}
+        onSelectExpiry={(selected) => setExpiryWindow(selected)}
+      />
     </SafeAreaView>
   );
 }
@@ -437,6 +539,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#087A3D",
+  },
+  mapSelectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#DCFCE7",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 8,
+  },
+  locationCardSelect: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#087A3D",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    shadowColor: "#087A3D",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  locationCardText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  mapPillBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#087A3D",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  mapPillText: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   safetyRow: {
     flexDirection: "row",

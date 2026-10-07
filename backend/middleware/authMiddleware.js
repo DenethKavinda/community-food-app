@@ -4,7 +4,6 @@ const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    // For development convenience, fallback to req.body.donor_id or default donor
     req.user = null;
     return next();
   }

@@ -29,6 +29,7 @@ export default function DonorDashboard() {
           <DonationPromoCard onPress={() => router.push("/(donor)/donate")} />
           <QuickActions
             onDonateFoodPress={() => router.push("/(donor)/donate")}
+            onManageFoodPress={() => router.push("/(donor)/food-items")}
             onViewHistoryPress={() => router.push("/(donor)/history")}
           />
           <RecentDonations onSeeAllPress={() => router.push("/(donor)/history")} />
