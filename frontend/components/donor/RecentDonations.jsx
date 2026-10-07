@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import DonationCard from "./DonationCard";
 import { getMyDonations } from "../../services/donorService";
@@ -17,11 +17,7 @@ export default function RecentDonations({ onSeeAllPress, onDonationPress }) {
   const [recentList, setRecentList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadRecent();
-  }, []);
-
-  const loadRecent = async () => {
+  const loadRecent = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await getMyDonations();
@@ -46,7 +42,12 @@ export default function RecentDonations({ onSeeAllPress, onDonationPress }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(loadRecent, 0);
+    return () => clearTimeout(timer);
+  }, [loadRecent]);
 
   return (
     <View style={styles.container}>

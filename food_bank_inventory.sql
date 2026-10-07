@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS food_bank_inventory (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    food_bank_id INT NOT NULL,
+    item_name VARCHAR(255) NOT NULL,
+    category VARCHAR(100) NULL,
+    quantity DECIMAL(10,2) NOT NULL DEFAULT 0,
+    quantity_unit VARCHAR(50) NOT NULL DEFAULT 'items',
+    expiry_at DATETIME NULL,
+    notes TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (food_bank_id) REFERENCES users(id) ON DELETE CASCADE
+);

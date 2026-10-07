@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useCallback } from "react";
 import {
   View,
   Text,
@@ -23,10 +23,17 @@ import { AuthContext } from "../../context/AuthContext";
 
 const getImageUrl = (url) => {
   if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file:") || url.startsWith("data:")) {
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("file:") ||
+    url.startsWith("data:")
+  ) {
     return url;
   }
-  const baseUrl = API.defaults.baseURL ? API.defaults.baseURL.replace(/\/api\/?$/, "") : "http://localhost:5000";
+  const baseUrl = API.defaults.baseURL
+    ? API.defaults.baseURL.replace(/\/api\/?$/, "")
+    : "http://localhost:5000";
   return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
 };
 
@@ -45,17 +52,15 @@ export default function DonationHistoryScreen() {
   const [deletingDonation, setDeletingDonation] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    fetchDonations();
-  }, []);
-
-  const fetchDonations = async () => {
+  const fetchDonations = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await getMyDonations();
       if (data && data.success && data.donations) {
-        const serverBaseUrl = API.defaults.baseURL ? API.defaults.baseURL.replace(/\/api\/?$/, "") : "";
+        const serverBaseUrl = API.defaults.baseURL
+          ? API.defaults.baseURL.replace(/\/api\/?$/, "")
+          : "";
 
         const formatted = data.donations.map((item) => {
           let formattedQty = item.quantity || "";
@@ -63,7 +68,8 @@ export default function DonationHistoryScreen() {
             formattedQty = `${item.quantity} ${item.quantity_unit.charAt(0).toUpperCase() + item.quantity_unit.slice(1)}`;
           }
 
-          let img = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80";
+          let img =
+            "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80";
           if (item.image_url) {
             img = item.image_url.startsWith("http")
               ? item.image_url
@@ -77,7 +83,9 @@ export default function DonationHistoryScreen() {
             location: item.location,
             expiry: item.expiry_window || "Today, 05:00 PM",
             notes: item.notes || "None provided",
-            date: item.created_at ? item.created_at.split("T")[0] : new Date().toISOString().split("T")[0],
+            date: item.created_at
+              ? item.created_at.split("T")[0]
+              : new Date().toISOString().split("T")[0],
             status: item.status || "Pending",
             image: img,
           };
@@ -88,12 +96,21 @@ export default function DonationHistoryScreen() {
       }
     } catch (err) {
       console.warn("Backend fetch failed:", err.message);
-      setError(err.response?.data?.message || err.message || "Could not load donations.");
+      setError(
+        err.response?.data?.message ||
+          err.message ||
+          "Could not load donations.",
+      );
       setDonations([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(fetchDonations, 0);
+    return () => clearTimeout(timer);
+  }, [fetchDonations]);
 
   // Handle Delete Donation
   const handleConfirmDelete = async () => {
@@ -102,13 +119,18 @@ export default function DonationHistoryScreen() {
     setIsDeleting(true);
     try {
       await deleteDonation(deletingDonation.id);
-      setDonations((prev) => prev.filter((item) => item.id !== deletingDonation.id));
+      setDonations((prev) =>
+        prev.filter((item) => item.id !== deletingDonation.id),
+      );
       if (selectedDonation && selectedDonation.id === deletingDonation.id) {
         setSelectedDonation(null);
       }
     } catch (err) {
       console.warn("Delete request error:", err.message);
-      Alert.alert("Delete Error", err.response?.data?.message || "Could not delete donation.");
+      Alert.alert(
+        "Delete Error",
+        err.response?.data?.message || "Could not delete donation.",
+      );
     } finally {
       setIsDeleting(false);
       setDeletingDonation(null);
@@ -119,7 +141,14 @@ export default function DonationHistoryScreen() {
   const displayedItems =
     activeTab === "Recent Posts"
       ? donations
-      : donations.filter((item) => ["Completed", "Picked Up", "Cancelled", "Expired"].includes(item.status));
+      : donations.filter((item) =>
+          [
+            "Completed",
+            "Picked Up",
+            "Cancelled",
+            "Expired",
+          ].includes(item.status),
+        );
 
   // Render status badge (mapped to Donor UI labels)
   const renderStatusBadge = (status) => {
@@ -127,7 +156,12 @@ export default function DonationHistoryScreen() {
       case "Pending":
         return (
           <View style={[styles.badgeBase, styles.badgePending]}>
-            <Ionicons name="time-outline" size={12} color="#D97706" style={{ marginRight: 3 }} />
+            <Ionicons
+              name="time-outline"
+              size={12}
+              color="#D97706"
+              style={{ marginRight: 3 }}
+            />
             <Text style={styles.textPending}>Available</Text>
           </View>
         );
@@ -141,28 +175,48 @@ export default function DonationHistoryScreen() {
       case "Picked Up":
         return (
           <View style={[styles.badgeBase, styles.badgePickedUp]}>
-            <MaterialCommunityIcons name="truck-delivery-outline" size={12} color="#4B5563" style={{ marginRight: 3 }} />
+            <MaterialCommunityIcons
+              name="truck-delivery-outline"
+              size={12}
+              color="#4B5563"
+              style={{ marginRight: 3 }}
+            />
             <Text style={styles.textPickedUp}>Picked Up</Text>
           </View>
         );
       case "Completed":
         return (
           <View style={[styles.badgeBase, styles.badgeCompleted]}>
-            <Ionicons name="checkmark-circle-outline" size={12} color="#087A3D" style={{ marginRight: 3 }} />
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={12}
+              color="#087A3D"
+              style={{ marginRight: 3 }}
+            />
             <Text style={styles.textCompleted}>Completed</Text>
           </View>
         );
       case "Cancelled":
         return (
           <View style={[styles.badgeBase, styles.badgeCancelled]}>
-            <Ionicons name="close-circle-outline" size={12} color="#DC2626" style={{ marginRight: 3 }} />
+            <Ionicons
+              name="close-circle-outline"
+              size={12}
+              color="#DC2626"
+              style={{ marginRight: 3 }}
+            />
             <Text style={styles.textCancelled}>Cancelled</Text>
           </View>
         );
       case "Expired":
         return (
           <View style={[styles.badgeBase, styles.badgeExpired]}>
-            <Ionicons name="alert-circle-outline" size={12} color="#6B7280" style={{ marginRight: 3 }} />
+            <Ionicons
+              name="alert-circle-outline"
+              size={12}
+              color="#6B7280"
+              style={{ marginRight: 3 }}
+            />
             <Text style={styles.textExpired}>Expired</Text>
           </View>
         );
@@ -193,7 +247,11 @@ export default function DonationHistoryScreen() {
         <Text style={styles.subHeaderTitle}>My Donations</Text>
 
         {user?.avatar_url ? (
-          <Image source={{ uri: getImageUrl(user.avatar_url) }} style={styles.avatar} resizeMode="cover" />
+          <Image
+            source={{ uri: getImageUrl(user.avatar_url) }}
+            style={styles.avatar}
+            resizeMode="cover"
+          />
         ) : (
           <View style={styles.avatarPlaceholderHeader}>
             <Ionicons name="person" size={18} color="#087A3D" />
@@ -224,7 +282,9 @@ export default function DonationHistoryScreen() {
               >
                 Recent Posts
               </Text>
-              {activeTab === "Recent Posts" && <View style={styles.activeIndicator} />}
+              {activeTab === "Recent Posts" && (
+                <View style={styles.activeIndicator} />
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -243,7 +303,9 @@ export default function DonationHistoryScreen() {
               >
                 History
               </Text>
-              {activeTab === "History" && <View style={styles.activeIndicator} />}
+              {activeTab === "History" && (
+                <View style={styles.activeIndicator} />
+              )}
             </TouchableOpacity>
           </View>
 
@@ -252,7 +314,8 @@ export default function DonationHistoryScreen() {
             <View style={styles.statsLeft}>
               <View style={styles.recordedDot} />
               <Text style={styles.recordedText}>
-                {donations.length} listing{donations.length !== 1 ? "s" : ""} recorded
+                {donations.length} listing{donations.length !== 1 ? "s" : ""}{" "}
+                recorded
               </Text>
             </View>
 
@@ -269,10 +332,15 @@ export default function DonationHistoryScreen() {
             </View>
           ) : displayedItems.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <MaterialCommunityIcons name="heart-broken-outline" size={48} color="#9CA3AF" />
+              <MaterialCommunityIcons
+                name="heart-broken-outline"
+                size={48}
+                color="#9CA3AF"
+              />
               <Text style={styles.emptyTitle}>No donations found</Text>
               <Text style={styles.emptySubtitle}>
-                Create a donation post to share surplus food with local food banks & volunteers.
+                Create a donation post to share surplus food with local food
+                banks & volunteers.
               </Text>
               <TouchableOpacity
                 style={styles.donateNowBtn}
@@ -290,7 +358,11 @@ export default function DonationHistoryScreen() {
                   activeOpacity={0.85}
                   onPress={() => setSelectedDonation(item)}
                 >
-                  <Image source={{ uri: item.image }} style={styles.cardImage} resizeMode="cover" />
+                  <Image
+                    source={{ uri: item.image }}
+                    style={styles.cardImage}
+                    resizeMode="cover"
+                  />
 
                   <View style={styles.cardInfo}>
                     <Text style={styles.cardTitle} numberOfLines={1}>
@@ -301,7 +373,9 @@ export default function DonationHistoryScreen() {
                       <Text
                         style={[
                           styles.quantityText,
-                          (item.status === "Active" || item.status === "Pending") && styles.quantityTextActive,
+                          (item.status === "Active" ||
+                            item.status === "Pending") &&
+                            styles.quantityTextActive,
                         ]}
                       >
                         {item.quantity}
@@ -313,21 +387,30 @@ export default function DonationHistoryScreen() {
                     </View>
 
                     <View style={styles.dateRow}>
-                      <Ionicons name="calendar-outline" size={13} color="#6B7280" style={{ marginRight: 4 }} />
+                      <Ionicons
+                        name="calendar-outline"
+                        size={13}
+                        color="#6B7280"
+                        style={{ marginRight: 4 }}
+                      />
                       <Text style={styles.dateText}>{item.date}</Text>
                     </View>
                   </View>
 
                   <View style={styles.rightActionColumn}>
                     {renderStatusBadge(item.status)}
-                    
+
                     <View style={styles.actionButtonsRow}>
                       <TouchableOpacity
                         style={styles.viewIconBtn}
                         onPress={() => setSelectedDonation(item)}
                         activeOpacity={0.7}
                       >
-                        <Ionicons name="eye-outline" size={16} color="#087A3D" />
+                        <Ionicons
+                          name="eye-outline"
+                          size={16}
+                          color="#087A3D"
+                        />
                       </TouchableOpacity>
 
                       {item.status === "Pending" && (
@@ -336,7 +419,11 @@ export default function DonationHistoryScreen() {
                           onPress={() => setDeletingDonation(item)}
                           activeOpacity={0.7}
                         >
-                          <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                          <Ionicons
+                            name="trash-outline"
+                            size={16}
+                            color="#DC2626"
+                          />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -379,26 +466,40 @@ export default function DonationHistoryScreen() {
                 />
 
                 <View style={styles.detailsHeaderRow}>
-                  <Text style={styles.detailsTitle}>{selectedDonation.title}</Text>
+                  <Text style={styles.detailsTitle}>
+                    {selectedDonation.title}
+                  </Text>
                   {renderStatusBadge(selectedDonation.status)}
                 </View>
 
                 <View style={styles.detailsGrid}>
                   {/* Quantity */}
                   <View style={styles.detailCard}>
-                    <MaterialCommunityIcons name="silverware-fork-knife" size={18} color="#087A3D" />
+                    <MaterialCommunityIcons
+                      name="silverware-fork-knife"
+                      size={18}
+                      color="#087A3D"
+                    />
                     <View style={styles.detailTextBox}>
                       <Text style={styles.detailLabel}>Quantity</Text>
-                      <Text style={styles.detailValue}>{selectedDonation.quantity}</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedDonation.quantity}
+                      </Text>
                     </View>
                   </View>
 
                   {/* Pickup Location */}
                   <View style={styles.detailCard}>
-                    <Ionicons name="location-outline" size={18} color="#087A3D" />
+                    <Ionicons
+                      name="location-outline"
+                      size={18}
+                      color="#087A3D"
+                    />
                     <View style={styles.detailTextBox}>
                       <Text style={styles.detailLabel}>Pickup Location</Text>
-                      <Text style={styles.detailValue}>{selectedDonation.location}</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedDonation.location}
+                      </Text>
                     </View>
                   </View>
 
@@ -407,25 +508,39 @@ export default function DonationHistoryScreen() {
                     <Ionicons name="time-outline" size={18} color="#087A3D" />
                     <View style={styles.detailTextBox}>
                       <Text style={styles.detailLabel}>Consume Before</Text>
-                      <Text style={styles.detailValue}>{selectedDonation.expiry}</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedDonation.expiry}
+                      </Text>
                     </View>
                   </View>
 
                   {/* Date Created */}
                   <View style={styles.detailCard}>
-                    <Ionicons name="calendar-outline" size={18} color="#087A3D" />
+                    <Ionicons
+                      name="calendar-outline"
+                      size={18}
+                      color="#087A3D"
+                    />
                     <View style={styles.detailTextBox}>
                       <Text style={styles.detailLabel}>Posted Date</Text>
-                      <Text style={styles.detailValue}>{selectedDonation.date}</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedDonation.date}
+                      </Text>
                     </View>
                   </View>
 
                   {/* Notes & Allergens */}
                   <View style={[styles.detailCard, { width: "100%" }]}>
-                    <MaterialCommunityIcons name="notebook-outline" size={18} color="#087A3D" />
+                    <MaterialCommunityIcons
+                      name="notebook-outline"
+                      size={18}
+                      color="#087A3D"
+                    />
                     <View style={styles.detailTextBox}>
                       <Text style={styles.detailLabel}>Notes & Allergens</Text>
-                      <Text style={styles.detailValue}>{selectedDonation.notes}</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedDonation.notes}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -438,14 +553,30 @@ export default function DonationHistoryScreen() {
                       onPress={() => setDeletingDonation(selectedDonation)}
                       activeOpacity={0.85}
                     >
-                      <Ionicons name="trash-outline" size={18} color="#DC2626" style={{ marginRight: 6 }} />
-                      <Text style={styles.deleteModalBtnText}>Delete Donation</Text>
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color="#DC2626"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={styles.deleteModalBtnText}>
+                        Delete Donation
+                      </Text>
                     </TouchableOpacity>
                   ) : (
                     <View style={styles.readOnlyNoteBox}>
-                      <Ionicons name="information-circle-outline" size={16} color="#6B7280" style={{ marginRight: 4 }} />
+                      <Ionicons
+                        name="information-circle-outline"
+                        size={16}
+                        color="#6B7280"
+                        style={{ marginRight: 4 }}
+                      />
                       <Text style={styles.readOnlyNoteText}>
-                        Status: {selectedDonation.status === "Active" ? "Reserved" : selectedDonation.status} (Read Only)
+                        Status:{" "}
+                        {selectedDonation.status === "Active"
+                          ? "Reserved"
+                          : selectedDonation.status}{" "}
+                        (Read Only)
                       </Text>
                     </View>
                   )}
@@ -479,7 +610,11 @@ export default function DonationHistoryScreen() {
 
             <Text style={styles.deleteTitle}>Delete Donation?</Text>
             <Text style={styles.deleteSubtitle}>
-              Are you sure you want to delete <Text style={{ fontWeight: "700" }}>"{deletingDonation?.title}"</Text>? This donation post will be permanently removed.
+              Are you sure you want to delete{" "}
+              <Text
+                style={{ fontWeight: "700" }}
+              >{`"${deletingDonation?.title}"`}</Text>
+              ? This donation post will be permanently removed.
             </Text>
 
             <View style={styles.deleteActionsRow}>
@@ -492,7 +627,10 @@ export default function DonationHistoryScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.confirmDeleteBtn, isDeleting && styles.confirmDeleteBtnDisabled]}
+                style={[
+                  styles.confirmDeleteBtn,
+                  isDeleting && styles.confirmDeleteBtnDisabled,
+                ]}
                 onPress={handleConfirmDelete}
                 disabled={isDeleting}
                 activeOpacity={0.85}

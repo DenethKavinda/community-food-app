@@ -83,3 +83,18 @@ export const fetchFoodBankClaimHistory = async () => {
   const response = await API.get("/food-bank-claims/history");
   return response.data;
 };
+
+export const fetchFoodBankInventory = async () => {
+  const response = await API.get("/food-bank-inventory");
+  return response.data;
+};
+
+export const createFoodBankInventoryItem = async (item) => {
+  const response = await API.post("/food-bank-inventory", item);
+  return response.data;
+};
+
+export const deleteFoodBankInventoryItem = async (id) => {
+  const response = await API.delete(`/food-bank-inventory/${id}`);
+  return response.data;
+};
