@@ -5,6 +5,7 @@ export default function DonorLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="donate" />
+      <Stack.Screen name="food-items" />
       <Stack.Screen name="history" />
       <Stack.Screen name="profile" />
       <Stack.Screen name="guidelines" />

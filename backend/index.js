@@ -4,8 +4,10 @@ const path = require("path");
 require("dotenv").config();
 
 const authController = require("./controllers/authController");
+const authRoutes = require("./routes/authRoutes");
 const donorRoutes = require("./routes/donorRoutes");
 const requestRoutes = require("./routes/requestRoutes");
+const foodItemRoutes = require("./routes/foodItemRoutes");
 
 // Ensure DB connection initializes
 require("./config/db");
@@ -20,11 +22,11 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Static uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Auth Routes
-app.post("/api/auth/register", authController.register);
-app.post("/api/auth/login", authController.login);
+// Auth & Profile Routes
+app.use("/api/auth", authRoutes);
 
-// Donor Routes
+// API Routes
+app.use("/api/food-items", foodItemRoutes);
 app.use("/api/donations", donorRoutes);
 app.use("/api/requests", requestRoutes);
 
