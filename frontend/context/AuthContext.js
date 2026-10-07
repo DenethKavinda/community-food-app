@@ -84,8 +84,15 @@ export function AuthProvider({ children }) {
     router.replace("/(auth)/login");
   };
 
+  const updateUserProfile = async (updatedUserData) => {
+    setUser(updatedUserData);
+    await AsyncStorage.setItem("user_data", JSON.stringify(updatedUserData));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, token, loading, login, logout, updateUserProfile }}
+    >
       {children}
     </AuthContext.Provider>
   );

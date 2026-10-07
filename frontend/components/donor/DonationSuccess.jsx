@@ -12,12 +12,12 @@ import { StatusBar } from "expo-status-bar";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 
 export default function DonationSuccess({
-  donationId = "#FD00123",
-  postedDate = "2026-09-14",
-  mealName = "Fresh Artisan Bread & Pastries",
-  quantity = "~12 kg",
-  expiryWindow = "Today, 5:00 PM – 7:30 PM",
-  image = "https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=300&q=80",
+  donationId = null,
+  postedDate = new Date().toISOString().split("T")[0],
+  mealName = "Fresh Food Donation",
+  quantity = "10 portions",
+  expiryWindow = "Today, 05:00 PM",
+  image = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80",
   onBackToDashboard,
   onViewDonation,
 }) {
@@ -59,25 +59,28 @@ export default function DonationSuccess({
 
           {/* Details Card */}
           <View style={styles.detailsCard}>
-            {/* Donation ID */}
-            <View style={styles.detailRow}>
-              <View style={styles.rowLeft}>
-                <View style={styles.iconBox}>
-                  <Ionicons name="receipt-outline" size={18} color="#087A3D" />
+            {/* Donation ID (Rendered only if realId exists) */}
+            {donationId ? (
+              <>
+                <View style={styles.detailRow}>
+                  <View style={styles.rowLeft}>
+                    <View style={styles.iconBox}>
+                      <Ionicons name="receipt-outline" size={18} color="#087A3D" />
+                    </View>
+                    <Text style={styles.detailLabel}>Donation ID</Text>
+                  </View>
+                  <View style={styles.idBadgeRow}>
+                    <View style={styles.idPill}>
+                      <Text style={styles.idText}>{donationId}</Text>
+                    </View>
+                    <TouchableOpacity activeOpacity={0.7} style={styles.copyBtn}>
+                      <Ionicons name="copy-outline" size={16} color="#6B7280" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Text style={styles.detailLabel}>Donation ID</Text>
-              </View>
-              <View style={styles.idBadgeRow}>
-                <View style={styles.idPill}>
-                  <Text style={styles.idText}>{donationId}</Text>
-                </View>
-                <TouchableOpacity activeOpacity={0.7} style={styles.copyBtn}>
-                  <Ionicons name="copy-outline" size={16} color="#6B7280" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.divider} />
+                <View style={styles.divider} />
+              </>
+            ) : null}
 
             {/* Posted Date */}
             <View style={styles.detailRow}>

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform, StatusBar, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform, StatusBar, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { fetchRequestById } from '../../services/recipientService';
+import { fetchRequestById, updateRequest } from '../../services/recipientService';
+import { getImageUrl } from '../../services/api';
 
 const GREEN = "#2e7d32";
 const GREEN_LIGHT = "#e8f5e9";
@@ -18,15 +19,95 @@ export default function RequestDetails() {
   const [request, setRequest] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // -- Edit State --
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editPortions, setEditPortions] = useState(1);
+  const [editFulfillment, setEditFulfillment] = useState("driver");
+  const [editAddress, setEditAddress] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [availablePortions, setAvailablePortions] = useState(1);
+
   useEffect(() => {
     if (params.id) {
-      setLoading(true);
-      fetchRequestById(params.id)
-        .then((data) => setRequest(data.request))
-        .catch((err) => console.error("Failed to fetch request details:", err))
-        .finally(() => setLoading(false));
+      loadRequestData();
     }
   }, [params.id]);
+
+  const loadRequestData = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchRequestById(params.id);
+      if (data?.request) {
+        setRequest(data.request);
+        setAvailablePortions(data.request.available_portions || 1);
+        setEditPortions(data.request.requested_portions || 1);
+        setEditFulfillment(data.request.fulfillment_method === "Self Pickup" ? "pickup" : "driver");
+        setEditAddress(data.request.delivery_address || "");
+        setEditPhone(data.request.contact_phone || "");
+        setEditNotes(data.request.special_instructions || "");
+      }
+    } catch (err) {
+      console.error("Failed to fetch request details:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (editPortions < 1 || editPortions > availablePortions) {
+      Alert.alert("Invalid Portions", `Please request between 1 and ${availablePortions} portions.`);
+      return;
+    }
+    if (!editPhone.trim()) {
+      Alert.alert("Missing Information", "Please provide a contact phone number.");
+      return;
+    }
+    if (editFulfillment === "driver" && !editAddress.trim()) {
+      Alert.alert("Missing Information", "Please provide a delivery address for Volunteer Driver Delivery.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const requestData = {
+        requested_portions: editPortions,
+        fulfillment_method: editFulfillment === "driver" ? "Volunteer Driver Delivery" : "Self Pickup",
+        delivery_address: editFulfillment === "driver" ? editAddress : null,
+        contact_phone: editPhone,
+        special_instructions: editNotes || null,
+      };
+
+      const res = await updateRequest(params.id, requestData);
+      if (res && res.success) {
+        Alert.alert("Success", "Request updated successfully.");
+        await loadRequestData();
+        setIsEditing(false);
+      } else {
+        Alert.alert("Error", res?.message || "Failed to edit request.");
+      }
+    } catch (err) {
+      console.error("Update request error:", err);
+      Alert.alert("Error", err.response?.data?.message || "An error occurred while updating.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (request) {
+      setEditPortions(request.requested_portions || 1);
+      setEditFulfillment(request.fulfillment_method === "Self Pickup" ? "pickup" : "driver");
+      setEditAddress(request.delivery_address || "");
+      setEditPhone(request.contact_phone || "");
+      setEditNotes(request.special_instructions || "");
+    }
+    setIsEditing(false);
+  };
+
+  const increment = () => setEditPortions((p) => Math.min(p + 1, availablePortions));
+  const decrement = () => setEditPortions((p) => Math.max(p - 1, 1));
 
   let formattedDate = "";
   let formattedTime = "";
@@ -74,6 +155,113 @@ export default function RequestDetails() {
     );
   }
 
+  if (isEditing && request) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.headerBtn} onPress={handleCancelEdit}>
+            <Text style={{ fontSize: 16, color: TEXT_PRIMARY, fontWeight: 'bold' }}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Edit Details</Text>
+          <View style={styles.headerBtn} />
+        </View>
+
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.card}>
+            <Text style={styles.portionLabel}>Requested Portions</Text>
+            <Text style={styles.portionHint}>Max limit: {availablePortions} portions</Text>
+            <View style={styles.stepperRow}>
+              <TouchableOpacity style={styles.stepperBtn} onPress={decrement}>
+                <Text style={styles.stepperBtnText}>−</Text>
+              </TouchableOpacity>
+              <View style={styles.stepperValue}>
+                <Text style={styles.stepperValueText}>{editPortions}</Text>
+              </View>
+              <TouchableOpacity style={styles.stepperBtn} onPress={increment}>
+                <Text style={styles.stepperBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <SectionDivider title="FULFILLMENT METHOD" />
+          <TouchableOpacity
+            style={[styles.fulfillCard, editFulfillment === "driver" && styles.fulfillCardActive]}
+            onPress={() => setEditFulfillment("driver")}
+            activeOpacity={0.8}
+          >
+            <View style={styles.fulfillTop}>
+              <View style={styles.fulfillRadioTitle}>
+                {editFulfillment === "driver" ? <RadioFilled /> : <RadioEmpty />}
+                <Text style={styles.fulfillTitle}>Volunteer Driver Delivery</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.fulfillCard, editFulfillment === "pickup" && styles.fulfillCardActive]}
+            onPress={() => setEditFulfillment("pickup")}
+            activeOpacity={0.8}
+          >
+            <View style={styles.fulfillTop}>
+              <View style={styles.fulfillRadioTitle}>
+                {editFulfillment === "pickup" ? <RadioFilled /> : <RadioEmpty />}
+                <Text style={styles.fulfillTitle}>Self Pickup</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <SectionDivider title="DELIVERY & CONTACT INFO" />
+          <View style={styles.infoCard}>
+            <View style={styles.editField}>
+              <Text style={styles.editLabel}>📍 Delivery Address</Text>
+              <TextInput
+                style={[styles.editInput, editFulfillment === "pickup" && styles.inputDisabled]}
+                value={editFulfillment === "pickup" ? "N/A (Self Pickup)" : editAddress}
+                onChangeText={setEditAddress}
+                placeholder="Enter delivery address"
+                placeholderTextColor={TEXT_SECONDARY}
+                editable={editFulfillment !== "pickup"}
+                multiline
+              />
+            </View>
+            <View style={[styles.editField, styles.editFieldBorder]}>
+              <Text style={styles.editLabel}>📞 Contact Phone</Text>
+              <TextInput
+                style={styles.editInput}
+                value={editPhone}
+                onChangeText={setEditPhone}
+                placeholder="Enter contact phone number"
+                placeholderTextColor={TEXT_SECONDARY}
+                keyboardType="phone-pad"
+              />
+            </View>
+          </View>
+
+          <SectionDivider title="DELIVERY NOTES / SPECIAL INSTRUCTIONS" />
+          <View style={styles.infoCard}>
+            <TextInput
+              style={styles.notesBox}
+              value={editNotes}
+              onChangeText={setEditNotes}
+              placeholder="e.g. Please ring front bell..."
+              placeholderTextColor={TEXT_SECONDARY}
+              multiline
+              textAlignVertical="top"
+            />
+          </View>
+          <View style={{ height: 40 }} />
+        </ScrollView>
+
+        <View style={styles.stickyFooter}>
+          <TouchableOpacity style={[styles.confirmBtn, isSubmitting && { opacity: 0.7 }]} onPress={handleSave} disabled={isSubmitting}>
+            {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.confirmBtnText}>Save Changes</Text>}
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#fdfdfd" />
@@ -96,7 +284,7 @@ export default function RequestDetails() {
         <View style={styles.card}>
           {request.image_url ? (
             <Image
-              source={{ uri: request.image_url }}
+              source={{ uri: getImageUrl(request.image_url) }}
               style={styles.cardImage}
               contentFit="cover"
             />
@@ -274,6 +462,14 @@ export default function RequestDetails() {
             </View>
           )}
         </View>
+
+        {/* Edit Button */}
+        {request.request_status === "Pending" && (
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setIsEditing(true)}>
+            <Feather name="edit-2" size={16} color={GREEN} style={{ marginRight: 8 }} />
+            <Text style={styles.secondaryBtnText}>Edit Delivery Details</Text>
+          </TouchableOpacity>
+        )}
 
       </ScrollView>
 
@@ -509,4 +705,211 @@ const styles = StyleSheet.create({
     color: GREEN,
     fontWeight: "700",
   },
+  secondaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 15,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: GREEN,
+    backgroundColor: "#e8f5e9",
+    width: "100%",
+  },
+  secondaryBtnText: {
+    color: GREEN,
+    fontSize: 14,
+    fontWeight: "700"
+  },
+  
+  // ── Edit Form Styles ──
+  portionLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: TEXT_PRIMARY,
+    marginBottom: 2,
+  },
+  portionHint: {
+    fontSize: 12,
+    color: "#aaa",
+    marginBottom: 10,
+  },
+  stepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  stepperBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  stepperBtnText: {
+    fontSize: 20,
+    color: TEXT_PRIMARY,
+    lineHeight: 22,
+  },
+  stepperValue: {
+    width: 44,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  stepperValueText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: TEXT_PRIMARY,
+  },
+  sectionDivider: {
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  sectionDividerText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: TEXT_SECONDARY,
+    letterSpacing: 0.8,
+  },
+  fulfillCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: RADIUS,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: BORDER,
+    marginBottom: 10,
+  },
+  fulfillCardActive: {
+    borderColor: GREEN,
+    backgroundColor: "#f5fbf5",
+  },
+  fulfillTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  fulfillRadioTitle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  fulfillTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: TEXT_PRIMARY,
+    flex: 1,
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: GREEN,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: GREEN,
+  },
+  radioOuterEmpty: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: BORDER,
+  },
+  editField: {
+    paddingVertical: 8,
+  },
+  editFieldBorder: {
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+  },
+  editLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: TEXT_SECONDARY,
+    marginBottom: 6,
+  },
+  editInput: {
+    borderWidth: 1,
+    borderColor: "#c8e6c9",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: TEXT_PRIMARY,
+    backgroundColor: "#fafffe",
+    minHeight: 38,
+  },
+  inputDisabled: {
+    backgroundColor: "#f0f0f0",
+    color: "#a0a0a0"
+  },
+  notesBox: {
+    minHeight: 80,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#c8e6c9",
+    padding: 10,
+    backgroundColor: "#fafffe",
+    fontSize: 13,
+    color: TEXT_PRIMARY,
+    lineHeight: 20,
+  },
+  stickyFooter: {
+    backgroundColor: "#ffffff",
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === "ios" ? 28 : 16,
+    alignItems: "center",
+  },
+  confirmBtn: {
+    width: "100%",
+    backgroundColor: GREEN,
+    borderRadius: RADIUS,
+    paddingVertical: 16,
+    alignItems: "center",
+    shadowColor: GREEN,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  confirmBtnText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
 });
+
+// ── Shared UI Subcomponents for Edit Form ──
+const RadioFilled = () => (
+  <View style={styles.radioOuter}>
+    <View style={styles.radioInner} />
+  </View>
+);
+const RadioEmpty = () => <View style={styles.radioOuterEmpty} />;
+
+const SectionDivider = ({ title }) => (
+  <View style={styles.sectionDivider}>
+    <Text style={styles.sectionDividerText}>{title}</Text>
+  </View>
+);

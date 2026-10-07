@@ -73,6 +73,14 @@ export default function FoodSafetyGuidelinesScreen() {
   const router = useRouter();
   const [expandedSection, setExpandedSection] = useState("temp");
 
+  const handleBack = () => {
+    if (router.canGoBack && router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(donor)/profile");
+    }
+  };
+
   const toggleSection = (id) => {
     setExpandedSection((prev) => (prev === id ? null : id));
   };
@@ -86,7 +94,7 @@ export default function FoodSafetyGuidelinesScreen() {
       <View style={styles.subHeader}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => router.back()}
+          onPress={handleBack}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={22} color="#111827" />

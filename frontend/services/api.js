@@ -32,4 +32,21 @@ API.interceptors.request.use(async (config) => {
   return config;
 });
 
+export const getImageUrl = (url) => {
+  if (!url) return null;
+  if (
+    url.startsWith("http://") ||
+    url.startsWith("https://") ||
+    url.startsWith("file:") ||
+    url.startsWith("data:")
+  ) {
+    return url;
+  }
+  const baseUrl = API.defaults.baseURL
+    ? API.defaults.baseURL.replace(/\/api\/?$/, "")
+    : "http://localhost:5000";
+  return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+};
+
 export default API;
+

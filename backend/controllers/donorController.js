@@ -10,12 +10,41 @@ if (!fs.existsSync(uploadsDir)) {
 
 // 1. CREATE NEW FOOD DONATION
 exports.createDonation = async (req, res) => {
-  const { meal_name, quantity, location, expiry_window, notes, image_base64, image_url } = req.body;
-  const donor_id = req.user ? req.user.id : (req.body.donor_id || 1);
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: "Authentication required. Please log in." });
+  }
 
-  if (!meal_name || !quantity || !location || !expiry_window) {
+  const { food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_base64, image_url } = req.body;
+  const donor_id = req.user.id;
+
+  let finalMealName = meal_name ? meal_name.trim() : "";
+  let validFoodItemId = food_item_id ? parseInt(food_item_id) : null;
+
+  // Validate numeric quantity > 0
+  const numericQty = parseFloat(quantity);
+  if (isNaN(numericQty) || numericQty <= 0) {
     return res.status(400).json({
-      message: "Please fill in all required fields (Meal Name, Quantity, Location, Expiry Window).",
+      message: "Please enter a valid numeric quantity greater than 0.",
+    });
+  }
+
+  const finalQuantityUnit = quantity_unit ? quantity_unit.trim().toLowerCase() : "portions";
+
+  // If food_item_id is provided, try to fetch the item's name if meal_name is empty
+  if (validFoodItemId && !finalMealName) {
+    try {
+      const [foodItems] = await pool.query("SELECT name FROM food_items WHERE id = ?", [validFoodItemId]);
+      if (foodItems.length > 0) {
+        finalMealName = foodItems[0].name;
+      }
+    } catch (err) {
+      console.warn("Could not fetch food item name:", err.message);
+    }
+  }
+
+  if (!finalMealName || !quantity || !location || !expiry_window) {
+    return res.status(400).json({
+      message: "Please fill in all required fields (Meal Name/Food Item, Quantity, Location, Expiry Window).",
     });
   }
 
@@ -53,13 +82,80 @@ exports.createDonation = async (req, res) => {
       savedImageUrl = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80";
     }
 
-    const [result] = await pool.query(
-      `INSERT INTO donations (donor_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')`,
-      [donor_id, meal_name, quantity, location, expiry_window, notes || null, savedImageUrl]
-    );
+    let result;
+    const statusToUse = "Pending";
+
+    try {
+      [result] = await pool.query(
+        `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl, statusToUse]
+      );
+    } catch (dbErr) {
+      console.warn("DB Query attempt 1 note:", dbErr.message);
+
+      // Handle status ENUM truncation error (errno 1265 / WARN_DATA_TRUNCATED)
+      if (dbErr.errno === 1265 || dbErr.code === "WARN_DATA_TRUNCATED") {
+        try {
+          await pool.query("ALTER TABLE donations MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending'");
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl]
+          );
+        } catch (alterErr) {
+          console.warn("Could not alter status column, falling back to 'Active':", alterErr.message);
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl]
+          );
+        }
+      } else {
+        // Fallback query if quantity_unit column is not added yet in MySQL
+        const combinedQty = `${numericQty} ${finalQuantityUnit}`;
+        try {
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+            [donor_id, validFoodItemId, finalMealName, combinedQty, location, expiry_window, notes || null, savedImageUrl]
+          );
+        } catch (err2) {
+          if (err2.errno === 1265 || err2.code === "WARN_DATA_TRUNCATED") {
+            try {
+              await pool.query("ALTER TABLE donations MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending'");
+            } catch (e) {}
+            [result] = await pool.query(
+              `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+              [donor_id, validFoodItemId, finalMealName, combinedQty, location, expiry_window, notes || null, savedImageUrl]
+            );
+          } else {
+            throw err2;
+          }
+        }
+      }
+    }
 
     const [newDonation] = await pool.query("SELECT * FROM donations WHERE id = ?", [result.insertId]);
+
+    // Create notifications for all recipients (fire and forget)
+    try {
+      const [recipients] = await pool.query("SELECT id FROM users WHERE role = 'RECIPIENT'");
+      if (recipients.length > 0) {
+        const d = newDonation[0];
+        const title = "New Food Donation Available";
+        const message = `${d.meal_name} - ${d.quantity} available`;
+        
+        const values = recipients.map(r => [r.id, d.id, title, message]);
+        await pool.query(
+          "INSERT INTO notifications (recipient_id, donation_id, title, message) VALUES ?",
+          [values]
+        );
+      }
+    } catch (notifErr) {
+      console.warn("Could not create notifications:", notifErr.message);
+    }
 
     res.status(201).json({
       message: "Donation post created successfully!",
@@ -71,9 +167,57 @@ exports.createDonation = async (req, res) => {
   }
 };
 
+// Helper function to check if donation expiry date has passed
+function isExpiryPassed(expiryWindowStr, createdAtStr) {
+  if (!expiryWindowStr) return false;
+  const str = expiryWindowStr.trim();
+  const now = new Date();
+
+  let targetDate = new Date(createdAtStr || now);
+
+  if (str.toLowerCase().startsWith("today")) {
+    targetDate = new Date();
+  } else if (str.toLowerCase().startsWith("yesterday")) {
+    return true; // Yesterday is always in the past
+  } else if (str.toLowerCase().startsWith("tomorrow")) {
+    targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + 1);
+  } else if (str.toLowerCase().startsWith("in 2 days")) {
+    targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + 2);
+  }
+
+  // Extract time portion e.g. "05:00 PM" or "17:00"
+  const timeMatch = str.match(/(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1], 10);
+    const minutes = parseInt(timeMatch[2], 10);
+    const ampm = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
+
+    if (ampm === "PM" && hours < 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+
+    targetDate.setHours(hours, minutes, 0, 0);
+    return targetDate < now;
+  }
+
+  // Fallback: direct date parse
+  const directDate = new Date(str.includes(",") ? str.split(",")[0] : str);
+  if (!isNaN(directDate.getTime())) {
+    directDate.setHours(23, 59, 59, 999);
+    return directDate < now;
+  }
+
+  return false;
+}
+
 // 2. GET DONATIONS (Logged-in Donor History or All Posts)
 exports.getDonorDonations = async (req, res) => {
-  const donor_id = req.user ? req.user.id : (req.query.donor_id || 1);
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: "Authentication required. Please log in." });
+  }
+
+  const donor_id = req.user.id;
   const showAll = req.query.all === "true";
   const statusFilter = req.query.status;
 
@@ -98,6 +242,18 @@ exports.getDonorDonations = async (req, res) => {
 
     const [donations] = await pool.query(query, queryParams);
 
+    // Auto-update expired Pending donations
+    for (let d of donations) {
+      if (d.status === "Pending" && isExpiryPassed(d.expiry_window, d.created_at)) {
+        d.status = "Expired";
+        try {
+          await pool.query("UPDATE donations SET status = 'Expired' WHERE id = ?", [d.id]);
+        } catch (e) {
+          console.warn(`Could not update donation ${d.id} to Expired:`, e.message);
+        }
+      }
+    }
+
     res.json({
       success: true,
       count: donations.length,
@@ -120,7 +276,15 @@ exports.getDonationById = async (req, res) => {
       return res.status(404).json({ message: "Donation item not found." });
     }
 
-    res.json({ success: true, donation: donations[0] });
+    const d = donations[0];
+    if (d.status === "Pending" && isExpiryPassed(d.expiry_window, d.created_at)) {
+      d.status = "Expired";
+      try {
+        await pool.query("UPDATE donations SET status = 'Expired' WHERE id = ?", [d.id]);
+      } catch (e) {}
+    }
+
+    res.json({ success: true, donation: d });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -131,7 +295,7 @@ exports.updateDonationStatus = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  const validStatuses = ["Active", "Picked Up", "Completed", "Cancelled"];
+  const validStatuses = ["Pending", "Active", "Picked Up", "Completed", "Cancelled", "Expired"];
   if (!status || !validStatuses.includes(status)) {
     return res.status(400).json({ message: "Invalid status provided." });
   }
@@ -166,11 +330,15 @@ exports.deleteDonation = async (req, res) => {
   }
 };
 
-// 6. GET AVAILABLE DONATIONS (Recipient Dashboard — Active only)
+// 6. GET AVAILABLE DONATIONS (Recipient Dashboard — Pending or Active)
 exports.getAvailableDonations = async (req, res) => {
   try {
     const [donations] = await pool.query(
-      "SELECT * FROM donations WHERE status = 'Active' ORDER BY created_at DESC"
+      `SELECT d.*, fi.category
+       FROM donations d
+       LEFT JOIN food_items fi ON d.food_item_id = fi.id
+       WHERE d.status IN ('Pending', 'Active')
+       ORDER BY d.created_at DESC`
     );
 
     // Fetch overlapping requests to calculate remaining available portions
@@ -190,7 +358,8 @@ exports.getAvailableDonations = async (req, res) => {
       
       return {
         ...d,
-        available_portions
+        available_portions,
+        category: d.category || null,
       };
     });
 
@@ -202,5 +371,59 @@ exports.getAvailableDonations = async (req, res) => {
   } catch (error) {
     console.error("Get available donations error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
+// 7. GET DONOR STATISTICS
+exports.getDonorStats = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const donor_id = req.user.id;
+
+  try {
+    // 1. Total Donations count
+    const [totalRes] = await pool.query(
+      "SELECT COUNT(*) AS totalDonations FROM donations WHERE donor_id = ?",
+      [donor_id]
+    );
+
+    // 2. Total Quantity / Portions Given
+    const [quantityRes] = await pool.query(
+      "SELECT SUM(CAST(quantity AS DECIMAL(10,2))) AS totalQuantity FROM donations WHERE donor_id = ?",
+      [donor_id]
+    );
+
+    // 3. Completed Donations count
+    const [completedRes] = await pool.query(
+      "SELECT COUNT(*) AS completedDonations FROM donations WHERE donor_id = ? AND status = 'Completed'",
+      [donor_id]
+    );
+
+    // 4. Pickups Done / In Progress
+    const [pickupsRes] = await pool.query(
+      "SELECT COUNT(*) AS pickupsDone FROM donations WHERE donor_id = ? AND status IN ('Picked Up', 'Completed')",
+      [donor_id]
+    );
+
+    const totalDonations = parseInt(totalRes[0]?.totalDonations) || 0;
+    const totalQuantity = parseFloat(quantityRes[0]?.totalQuantity) || 0;
+    const completedDonations = parseInt(completedRes[0]?.completedDonations) || 0;
+    const pickupsDone = parseInt(pickupsRes[0]?.pickupsDone) || 0;
+
+    res.json({
+      success: true,
+      stats: {
+        totalDonations,
+        totalQuantity,
+        completedDonations,
+        pickupsDone,
+      },
+    });
+  } catch (error) {
+    console.error("getDonorStats error:", error);
+    res.status(500).json({ success: false, message: "Server error fetching stats", error: error.message });
   }
 };
