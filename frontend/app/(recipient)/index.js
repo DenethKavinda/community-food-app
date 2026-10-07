@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   StatusBar,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { AuthContext } from "../../context/AuthContext";
 import { fetchAvailableFoods, fetchNotifications } from "../../services/recipientService";
 import { getImageUrl } from "../../services/api";
@@ -89,7 +89,7 @@ export default function RecipientDashboard() {
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
+  const loadHomeData = React.useCallback(() => {
     setLoading(true);
     fetchAvailableFoods()
       .then((data) => setFoods(data.donations || []))
@@ -104,6 +104,8 @@ export default function RecipientDashboard() {
       .catch(console.error);
   }, []);
 
+  useFocusEffect(loadHomeData);
+
   // Build category list dynamically from fetched donations.
   // Only include non-empty categories; always start with "All".
   const categories = ["All", ...Array.from(
@@ -116,7 +118,7 @@ export default function RecipientDashboard() {
 
   const filteredFood = foods.filter((item) => {
     const matchesSearch =
-      (item.meal_name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.display_meal_name || item.meal_name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       String(item.donor_id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.location || "").toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -190,7 +192,7 @@ export default function RecipientDashboard() {
         </View>
 
         {/* ── Section title ── */}
-        <Text style={styles.sectionTitle}>Available Food</Text>
+        <Text style={styles.sectionTitle}>Available Donations to Claim</Text>
 
         {/* ── Category Chips ── */}
         <ScrollView
@@ -302,7 +304,7 @@ function FoodCard({ item, onView }) {
 
       <View style={styles.cardBody}>
 
-        <Text style={styles.cardTitle}>{item.meal_name}</Text>
+        <Text style={styles.cardTitle}>{item.display_meal_name || item.meal_name}</Text>
         {(item.category || "").trim() ? (
           <Text style={styles.cardCategory}>{item.category.trim()}</Text>
         ) : null}

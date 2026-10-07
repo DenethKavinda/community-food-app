@@ -9,13 +9,13 @@ import {
   StatusBar,
   Platform,
   Alert,
+  Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
   fetchNotifications,
   markNotificationAsRead,
   markAllNotificationsAsRead,
-  fetchDonationById,
 } from "../../services/recipientService";
 
 const GREEN = "#2e7d32";
@@ -30,10 +30,7 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    loadNotifications();
-  }, []);
+  const [selectedNotification, setSelectedNotification] = useState(null);
 
   const loadNotifications = () => {
     setLoading(true);
@@ -44,6 +41,11 @@ export default function NotificationsScreen() {
       .catch((err) => console.error("Failed to fetch notifications:", err))
       .finally(() => setLoading(false));
   };
+
+  useEffect(() => {
+    const timer = setTimeout(loadNotifications, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleMarkAllAsRead = async () => {
     try {
@@ -66,18 +68,7 @@ export default function NotificationsScreen() {
         );
       }
 
-      // Fetch the full donation info
-      const data = await fetchDonationById(item.donation_id);
-      if (data && data.success && data.donation) {
-        router.push({
-          pathname: "/(recipient)/confirm-request",
-          params: {
-            itemData: JSON.stringify(data.donation),
-          },
-        });
-      } else {
-        Alert.alert("Error", "Could not load the related donation details.");
-      }
+      setSelectedNotification(item);
     } catch (err) {
       console.error("Failed handling notification click", err);
       Alert.alert("Error", "Could not open this donation.");
@@ -151,6 +142,31 @@ export default function NotificationsScreen() {
           })
         )}
       </ScrollView>
+
+      <Modal
+        visible={Boolean(selectedNotification)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedNotification(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{selectedNotification?.title}</Text>
+            <Text style={styles.modalMessage}>{selectedNotification?.message}</Text>
+            <Text style={styles.modalTime}>
+              {selectedNotification?.created_at
+                ? new Date(selectedNotification.created_at).toLocaleString()
+                : ""}
+            </Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setSelectedNotification(null)}
+            >
+              <Text style={styles.modalButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -258,4 +274,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#aaa",
   },
+  modalBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  modalCard: {
+    width: "100%",
+    padding: 22,
+    borderRadius: 16,
+    backgroundColor: "#ffffff",
+  },
+  modalTitle: { fontSize: 18, fontWeight: "800", color: TEXT_PRIMARY },
+  modalMessage: { marginTop: 12, fontSize: 15, lineHeight: 22, color: TEXT_SECONDARY },
+  modalTime: { marginTop: 12, fontSize: 12, color: "#999" },
+  modalButton: { alignSelf: "flex-end", marginTop: 18, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 9, backgroundColor: GREEN },
+  modalButtonText: { color: "#ffffff", fontWeight: "700" },
 });

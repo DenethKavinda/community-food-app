@@ -72,3 +72,29 @@ export const markAllNotificationsAsRead = async () => {
   const response = await API.patch("/recipient/notifications/read-all");
   return response.data;
 };
+
+// Save a food-bank claim and its pickup/driver details.
+export const createFoodBankClaim = async (claimData) => {
+  const response = await API.post("/food-bank-claims", claimData);
+  return response.data;
+};
+
+export const fetchFoodBankClaimHistory = async () => {
+  const response = await API.get("/food-bank-claims/history");
+  return response.data;
+};
+
+export const fetchFoodBankInventory = async () => {
+  const response = await API.get("/food-bank-inventory");
+  return response.data;
+};
+
+export const createFoodBankInventoryItem = async (item) => {
+  const response = await API.post("/food-bank-inventory", item);
+  return response.data;
+};
+
+export const deleteFoodBankInventoryItem = async (id) => {
+  const response = await API.delete(`/food-bank-inventory/${id}`);
+  return response.data;
+};

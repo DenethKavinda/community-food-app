@@ -1,40 +1,63 @@
-import React, { useContext } from "react";
+import React, { useContext, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Image,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../../context/AuthContext";
-
-const donations = [
-  {
-    name: "Rice & Curry",
-    portions: "18 portions",
-    location: "Colombo 03",
-    time: "Today, 11:30 AM",
-  },
-  {
-    name: "Sandwiches",
-    portions: "25 portions",
-    location: "Wellawatte",
-    time: "Today, 01:00 PM",
-  },
-  {
-    name: "Fruits (Mixed)",
-    portions: "15 portions",
-    location: "Nugegoda",
-    time: "Today, 02:30 PM",
-  },
-];
+import {
+  fetchAvailableFoods,
+  fetchNotifications,
+  markNotificationAsRead,
+} from "../../services/recipientService";
+import { getImageUrl } from "../../services/api";
 
 export default function BankDashboard() {
   const router = useRouter();
   const { user, logout } = useContext(AuthContext);
   const userName = user?.name || "Food Bank User";
+  const [donations, setDonations] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadDashboard = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [donationData, notificationData] = await Promise.all([
+        fetchAvailableFoods(),
+        fetchNotifications(),
+      ]);
+      setDonations(donationData?.donations || []);
+      setNotifications((notificationData?.notifications || []).filter((notification) => !notification.is_read));
+    } catch (error) {
+      console.error("Failed to load food bank dashboard:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadDashboard();
+    }, [loadDashboard])
+  );
+
+  const openNotification = async (notification) => {
+    if (!notification.is_read) {
+      try {
+        await markNotificationAsRead(notification.id);
+      } catch (error) {
+        console.error("Failed to mark notification as read:", error);
+      }
+    }
+    setNotifications((current) => current.filter((item) => item.id !== notification.id));
+    router.push("/(recipient)/notifications");
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -55,13 +78,6 @@ export default function BankDashboard() {
           <Text style={styles.userName} numberOfLines={1}>
             {userName}
           </Text>
-          <TouchableOpacity
-            style={styles.iconButton}
-            accessibilityLabel="Notifications"
-          >
-            <Ionicons name="notifications-outline" size={22} color="#334155" />
-            <View style={styles.notificationDot} />
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.logoutButton}
             accessibilityLabel="Log out"
@@ -91,38 +107,83 @@ export default function BankDashboard() {
         </View>
       </View>
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Available Donations</Text>
-        <TouchableOpacity onPress={() => router.replace("/(bank)/inventory")}>
+      <View style={styles.notificationHeader}>
+        <Text style={styles.sectionTitle}>Upcoming Notifications</Text>
+        <TouchableOpacity onPress={() => router.push("/(recipient)/notifications")}>
           <Text style={styles.seeAll}>See All</Text>
         </TouchableOpacity>
       </View>
+      {notifications.length === 0 ? (
+        <Text style={styles.emptyText}>No new donation notifications.</Text>
+      ) : (
+        notifications.slice(0, 3).map((notification) => (
+          <TouchableOpacity key={notification.id} style={[styles.notificationCard, !notification.is_read && styles.unreadNotification]} onPress={() => openNotification(notification)}>
+            <Ionicons name="notifications-outline" size={19} color="#16a34a" />
+            <View style={styles.notificationCopy}>
+              <Text style={styles.notificationTitle}>{notification.title}</Text>
+              <Text style={styles.notificationMessage}>{notification.message}</Text>
+            </View>
+            {!notification.is_read && <View style={styles.unreadDot} />}
+          </TouchableOpacity>
+        ))
+      )}
 
-      {donations.map((donation) => (
-        <View key={donation.name} style={styles.donationCard}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Available Donations</Text>
+        <View style={styles.sectionActions}>
+          <TouchableOpacity onPress={() => router.push("/(bank)/history")}>
+            <Text style={styles.seeAll}>History</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.replace("/(bank)/inventory")}>
+            <Text style={styles.seeAll}>See All</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {loading ? (
+        <Text style={styles.emptyText}>Loading available donations...</Text>
+      ) : donations.length === 0 ? (
+        <Text style={styles.emptyText}>No donations are available right now.</Text>
+      ) : donations.slice(0, 10).map((donation) => (
+        <View key={donation.id} style={styles.donationCard}>
           <View style={styles.imagePlaceholder}>
-            <Ionicons name="restaurant-outline" size={25} color="#cbd5e1" />
+            {donation.image_url ? (
+              <Image source={{ uri: getImageUrl(donation.image_url) }} style={styles.donationImage} />
+            ) : (
+              <Ionicons name="restaurant-outline" size={25} color="#cbd5e1" />
+            )}
           </View>
           <View style={styles.donationInfo}>
-            <Text style={styles.donationName}>{donation.name}</Text>
-            <Text style={styles.portions}>{donation.portions}</Text>
+            <Text style={styles.donationName}>
+              {donation.display_meal_name || donation.meal_name}
+            </Text>
+            <Text style={styles.portions}>
+              {donation.available_portions ?? donation.quantity} available
+            </Text>
             <View style={styles.metaRow}>
               <Ionicons name="location-outline" size={14} color="#94a3b8" />
               <Text style={styles.metaText}>{donation.location}</Text>
             </View>
             <View style={styles.metaRow}>
               <Ionicons name="time-outline" size={14} color="#94a3b8" />
-              <Text style={styles.metaText}>{donation.time}</Text>
+              <Text style={styles.metaText}>{donation.expiry_window}</Text>
             </View>
           </View>
           <TouchableOpacity
             style={styles.claimButton}
-            accessibilityLabel={`Claim ${donation.name}`}
+            accessibilityLabel={`Claim ${donation.display_meal_name || donation.meal_name}`}
+            onPress={() =>
+              router.push({
+                pathname: "/(bank)/drivers",
+                params: { itemData: JSON.stringify(donation) },
+              })
+            }
           >
             <Text style={styles.claimText}>Claim</Text>
           </TouchableOpacity>
         </View>
       ))}
+
     </ScrollView>
   );
 }
@@ -147,6 +208,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   brandText: { fontSize: 20, fontWeight: "800", color: "#172033" },
+  sectionActions: { flexDirection: "row", alignItems: "center", gap: 14 },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   userName: { maxWidth: 110, fontSize: 12, fontWeight: "700", color: "#334155" },
   iconButton: { position: "relative", padding: 4 },
@@ -159,6 +221,18 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#16a34a",
   },
+  notificationBadge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ef4444",
+  },
+  notificationBadgeText: { color: "#ffffff", fontSize: 9, fontWeight: "800" },
   logoutButton: {
     width: 34,
     height: 34,
@@ -260,6 +334,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  donationImage: { width: 80, height: 80, borderRadius: 13 },
   donationInfo: { flex: 1, marginLeft: 14 },
   donationName: { fontSize: 15, fontWeight: "800", color: "#172033" },
   portions: {
@@ -282,4 +357,29 @@ const styles = StyleSheet.create({
     backgroundColor: "#16a34a",
   },
   claimText: { color: "#ffffff", fontSize: 13, fontWeight: "800" },
+  emptyText: { marginVertical: 18, color: "#64748b", fontSize: 13, textAlign: "center" },
+  notificationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 18,
+    marginBottom: 12,
+  },
+  notificationCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    padding: 13,
+    borderRadius: 14,
+    backgroundColor: "#ffffff",
+  },
+  unreadNotification: {
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  notificationCopy: { flex: 1, marginLeft: 10 },
+  notificationTitle: { fontSize: 13, fontWeight: "800", color: "#172033" },
+  notificationMessage: { marginTop: 3, fontSize: 11, color: "#64748b" },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#16a34a" },
 });
