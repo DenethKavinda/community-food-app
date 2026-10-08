@@ -20,6 +20,8 @@ exports.createRequest = async (req, res) => {
     requested_portions,
     fulfillment_method,
     delivery_address,
+    delivery_latitude,
+    delivery_longitude,
     contact_phone,
     special_instructions,
   } = req.body;
@@ -45,11 +47,25 @@ exports.createRequest = async (req, res) => {
     });
   }
 
-  if (fulfillment_method === "Volunteer Driver Delivery" && !delivery_address) {
-    return res.status(400).json({
-      success: false,
-      message: "delivery_address is required when fulfillment_method is 'Volunteer Driver Delivery'.",
-    });
+  if (fulfillment_method === "Volunteer Driver Delivery") {
+    if (!delivery_address) {
+      return res.status(400).json({
+        success: false,
+        message: "delivery_address is required when fulfillment_method is 'Volunteer Driver Delivery'.",
+      });
+    }
+    if (delivery_latitude === undefined || delivery_longitude === undefined || delivery_latitude === null || delivery_longitude === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Exact map location is required for Volunteer Driver Delivery.",
+      });
+    }
+    if (isNaN(Number(delivery_latitude)) || isNaN(Number(delivery_longitude))) {
+      return res.status(400).json({
+        success: false,
+        message: "Latitude and longitude must be valid numbers.",
+      });
+    }
   }
 
   if (!contact_phone) {
@@ -107,14 +123,16 @@ exports.createRequest = async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO requests
         (recipient_id, donation_id, requested_portions, fulfillment_method,
-         delivery_address, contact_phone, special_instructions, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+         delivery_address, delivery_latitude, delivery_longitude, contact_phone, special_instructions, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
       [
         recipient_id,
         donation_id,
         requested_portions,
         fulfillment_method,
         delivery_address || null,
+        fulfillment_method === "Volunteer Driver Delivery" ? delivery_latitude : null,
+        fulfillment_method === "Volunteer Driver Delivery" ? delivery_longitude : null,
         contact_phone,
         special_instructions || null,
       ]
@@ -284,6 +302,8 @@ exports.updateRequest = async (req, res) => {
     requested_portions,
     fulfillment_method,
     delivery_address,
+    delivery_latitude,
+    delivery_longitude,
     contact_phone,
     special_instructions,
   } = req.body;
@@ -368,12 +388,25 @@ exports.updateRequest = async (req, res) => {
       updatedAddress = delivery_address;
     }
 
-    if (updatedMethod === "Volunteer Driver Delivery" && !updatedAddress) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "delivery_address is required when fulfillment_method is 'Volunteer Driver Delivery'.",
-      });
+    if (updatedMethod === "Volunteer Driver Delivery") {
+      if (!updatedAddress) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "delivery_address is required when fulfillment_method is 'Volunteer Driver Delivery'.",
+        });
+      }
+      if (
+        delivery_latitude === undefined ||
+        delivery_longitude === undefined ||
+        delivery_latitude === null ||
+        delivery_longitude === null
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Exact map location is required for Volunteer Driver Delivery.",
+        });
+      }
     }
 
     if (contact_phone !== undefined && !contact_phone) {
@@ -392,6 +425,8 @@ exports.updateRequest = async (req, res) => {
        SET requested_portions = ?,
            fulfillment_method = ?,
            delivery_address   = ?,
+           delivery_latitude  = ?,
+           delivery_longitude = ?,
            contact_phone      = ?,
            special_instructions = ?
        WHERE id = ? AND recipient_id = ?`,
@@ -399,6 +434,8 @@ exports.updateRequest = async (req, res) => {
         updatedPortions,
         updatedMethod,
         updatedAddress || null,
+        updatedMethod === "Volunteer Driver Delivery" ? delivery_latitude : null,
+        updatedMethod === "Volunteer Driver Delivery" ? delivery_longitude : null,
         updatedPhone,
         updatedInstructions || null,
         id,
