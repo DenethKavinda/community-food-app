@@ -178,6 +178,8 @@ exports.getMyRequests = async (req, res) => {
          r.requested_portions,
          r.fulfillment_method,
          r.delivery_address,
+         r.delivery_latitude,
+         r.delivery_longitude,
          r.contact_phone,
          r.special_instructions,
          r.status           AS request_status,
@@ -188,9 +190,11 @@ exports.getMyRequests = async (req, res) => {
          d.location         AS donation_location,
          d.expiry_window,
          d.image_url,
-         d.status           AS donation_status
+         d.status           AS donation_status,
+         dt.status          AS driver_task_status
        FROM requests r
        JOIN donations d ON r.donation_id = d.id
+       LEFT JOIN driver_tasks dt ON dt.id = (SELECT MAX(id) FROM driver_tasks WHERE request_id = r.id)
        WHERE r.recipient_id = ?
        ORDER BY r.requested_at DESC`,
       [recipient_id]
@@ -232,6 +236,8 @@ exports.getRequestById = async (req, res) => {
          r.requested_portions,
          r.fulfillment_method,
          r.delivery_address,
+         r.delivery_latitude,
+         r.delivery_longitude,
          r.contact_phone,
          r.special_instructions,
          r.status           AS request_status,
@@ -242,9 +248,11 @@ exports.getRequestById = async (req, res) => {
          d.location         AS donation_location,
          d.expiry_window,
          d.image_url,
-         d.status           AS donation_status
+         d.status           AS donation_status,
+         dt.status          AS driver_task_status
        FROM requests r
        JOIN donations d ON r.donation_id = d.id
+       LEFT JOIN driver_tasks dt ON dt.id = (SELECT MAX(id) FROM driver_tasks WHERE request_id = r.id)
        WHERE r.id = ? AND r.recipient_id = ?`,
       [id, recipient_id]
     );

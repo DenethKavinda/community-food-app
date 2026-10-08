@@ -179,6 +179,31 @@ const updateDriverTaskStatus = async (req, res) => {
           message: "Food Bank claim not found.",
         });
       }
+
+      // Upsert record into driver_tasks table for tracking
+      const driverId = req.user?.id || null;
+      const [existingTask] = await db.query(
+        "SELECT id FROM driver_tasks WHERE claim_id = ?",
+        [claimId]
+      );
+      if (existingTask.length > 0) {
+        await db.query(
+          "UPDATE driver_tasks SET status = ?, driver_id = COALESCE(?, driver_id) WHERE claim_id = ?",
+          [status, driverId, claimId]
+        );
+      } else {
+        const [claimRow] = await db.query(
+          "SELECT donation_id FROM food_bank_claims WHERE id = ?",
+          [claimId]
+        );
+        if (claimRow.length > 0) {
+          await db.query(
+            `INSERT INTO driver_tasks (driver_id, task_type, claim_id, donation_id, status)
+             VALUES (?, 'FOOD_BANK', ?, ?, ?)`,
+            [driverId, claimId, claimRow[0].donation_id, status]
+          );
+        }
+      }
     }
 
     // =================================================
@@ -216,6 +241,62 @@ const updateDriverTaskStatus = async (req, res) => {
           success: false,
           message: "Recipient request not found.",
         });
+      }
+
+      // Upsert record into driver_tasks table for tracking
+      const driverId = req.user?.id || null;
+      const [existingTask] = await db.query(
+        "SELECT id FROM driver_tasks WHERE request_id = ?",
+        [requestId]
+      );
+      if (existingTask.length > 0) {
+        await db.query(
+          "UPDATE driver_tasks SET status = ?, driver_id = COALESCE(?, driver_id) WHERE request_id = ?",
+          [status, driverId, requestId]
+        );
+      } else {
+        const [reqRow] = await db.query(
+          "SELECT donation_id FROM requests WHERE id = ?",
+          [requestId]
+        );
+        if (reqRow.length > 0) {
+          await db.query(
+            `INSERT INTO driver_tasks (driver_id, task_type, request_id, donation_id, status)
+             VALUES (?, 'RECIPIENT', ?, ?, ?)`,
+            [driverId, requestId, reqRow[0].donation_id, status]
+          );
+        }
+      }
+
+      // Create notification for recipient when status is DELIVERED
+      if (status === "DELIVERED") {
+        try {
+          const [reqDetails] = await db.query(
+            "SELECT recipient_id, donation_id FROM requests WHERE id = ?",
+            [requestId]
+          );
+
+          if (reqDetails.length > 0) {
+            const { recipient_id, donation_id } = reqDetails[0];
+            const title = "Food Delivered";
+            const message = "Your requested food has been delivered successfully.";
+
+            // Avoid duplicate notifications if drop-off endpoint is invoked again
+            const [existingNotif] = await db.query(
+              "SELECT id FROM notifications WHERE recipient_id = ? AND donation_id = ? AND title = ?",
+              [recipient_id, donation_id, title]
+            );
+
+            if (existingNotif.length === 0) {
+              await db.query(
+                "INSERT INTO notifications (recipient_id, donation_id, title, message, is_read) VALUES (?, ?, ?, ?, FALSE)",
+                [recipient_id, donation_id, title, message]
+              );
+            }
+          }
+        } catch (notifErr) {
+          console.error("Could not create delivery notification:", notifErr.message);
+        }
       }
     }
 

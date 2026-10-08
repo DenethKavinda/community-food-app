@@ -97,6 +97,21 @@ export default function MyRequests() {
   );
 }
 
+// Derive a display label + colour config from both status fields
+function getStatusConfig(reqStatus, drvStatus) {
+  if (drvStatus === 'DELIVERED' || reqStatus === 'Completed')
+    return { label: 'Completed', bg: '#e8f5e9', border: '#66bb6a', text: '#2e7d32' };
+  if (drvStatus === 'PICKED_UP')
+    return { label: 'Food Picked Up', bg: '#e3f2fd', border: '#42a5f5', text: '#1565c0' };
+  if (drvStatus === 'ACCEPTED' || reqStatus === 'Approved')
+    return { label: 'Approved', bg: '#f3e5f5', border: '#ab47bc', text: '#6a1b9a' };
+  if (reqStatus === 'Cancelled')
+    return { label: 'Cancelled', bg: '#fff3e0', border: '#ff9800', text: '#e65100' };
+  if (reqStatus === 'Rejected')
+    return { label: 'Rejected', bg: '#ffebee', border: '#e57373', text: '#c62828' };
+  return { label: 'Pending', bg: '#fffde7', border: '#ffd54f', text: '#f57f17' };
+}
+
 function RequestCard({ item, onCancel }) {
   const router = useRouter();
   const [cardHovered, setCardHovered] = useState(false);
@@ -161,18 +176,22 @@ function RequestCard({ item, onCancel }) {
       <View style={styles.cardInfo}>
         <Text style={styles.cardTitle}>{item.meal_name}</Text>
         
-        <View style={styles.portionBadge}>
-          <Text style={styles.portionText}>{item.requested_portions} portions</Text>
-        </View>
-        
         <View style={styles.metaRow}>
           <Feather name="map-pin" size={11} color={TEXT_SECONDARY} style={styles.metaIcon} />
-          <Text style={styles.metaText}>{item.donation_location}</Text>
+          <Text style={styles.metaText} numberOfLines={1}>{item.donation_location}</Text>
         </View>
         <View style={styles.metaRow}>
           <Feather name="clock" size={11} color={TEXT_SECONDARY} style={styles.metaIcon} />
-          <Text style={styles.metaText}>{item.expiry_window || item.request_status}</Text>
+          <Text style={styles.metaText} numberOfLines={1}>{item.expiry_window || '—'}</Text>
         </View>
+        {(() => {
+          const cfg = getStatusConfig(item.request_status, item.driver_task_status);
+          return (
+            <View style={[styles.statusBadge, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
+              <Text style={[styles.statusBadgeText, { color: cfg.text }]}>{cfg.label}</Text>
+            </View>
+          );
+        })()}
       </View>
 
       <View style={styles.cardActions}>
@@ -352,6 +371,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#c62828",
     textAlign: "center",
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   tabBar: {
     flexDirection: "row",
