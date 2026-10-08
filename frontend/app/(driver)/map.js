@@ -118,6 +118,21 @@ export default function DriverMap() {
       // For now use the newest available pickup.
       const firstPickup = pickups[0];
 
+      // Accept the task when the driver opens it so the assignment is persisted.
+      try {
+        await API.patch("/driver/task-status", {
+          taskType: firstPickup.task_type,
+          claimId: firstPickup.claim_id,
+          requestId: firstPickup.request_id,
+          status: "ACCEPTED",
+        });
+      } catch (error) {
+        console.error(
+          "Failed to accept driver task:",
+          error?.response?.data || error.message
+        );
+      }
+
       const latitude = Number(firstPickup.pickup_latitude);
       const longitude = Number(firstPickup.pickup_longitude);
 
@@ -136,8 +151,6 @@ export default function DriverMap() {
       }
 
       setPickup(firstPickup);
-
-      
 
       setPickupLocation({
         latitude,

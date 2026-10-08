@@ -1,5 +1,19 @@
 const db = require("../config/db");
 
+const createNotification = async ({ recipientId, donationId, title, message }) => {
+  const [existing] = await db.query(
+    "SELECT id FROM notifications WHERE recipient_id = ? AND donation_id = ? AND title = ? LIMIT 1",
+    [recipientId, donationId, title]
+  );
+
+  if (existing.length === 0) {
+    await db.query(
+      "INSERT INTO notifications (recipient_id, donation_id, title, message, is_read) VALUES (?, ?, ?, ?, FALSE)",
+      [recipientId, donationId, title, message]
+    );
+  }
+};
+
 // =====================================================
 // GET DRIVER DELIVERY TASKS
 // Food Bank claims + Recipient requests
@@ -180,6 +194,48 @@ const updateDriverTaskStatus = async (req, res) => {
         });
       }
 
+      const [claimDetails] = await db.query(
+        `SELECT food_bank_id, donation_id
+         FROM food_bank_claims
+         WHERE id = ?`,
+        [claimId]
+      );
+
+      if (claimDetails.length > 0) {
+        const { food_bank_id: foodBankId, donation_id: donationId } = claimDetails[0];
+
+        if (status === "ACCEPTED") {
+          await createNotification({
+            recipientId: foodBankId,
+            donationId,
+            title: "Driver Assigned",
+            message: "A volunteer driver has been assigned to collect your claimed food.",
+          });
+        } else if (status === "PICKED_UP") {
+          await createNotification({
+            recipientId: foodBankId,
+            donationId,
+            title: "Food Picked Up",
+            message: "The volunteer driver has picked up your claimed food and is on the way.",
+          });
+          await db.query(
+            "UPDATE donations SET status = 'Picked Up' WHERE id = ? AND status IN ('Pending', 'Active')",
+            [donationId]
+          );
+        } else if (status === "DELIVERED") {
+          await createNotification({
+            recipientId: foodBankId,
+            donationId,
+            title: "Food Dropped Off",
+            message: "Your claimed food has been dropped off successfully.",
+          });
+          await db.query(
+            "UPDATE donations SET status = 'Completed' WHERE id = ?",
+            [donationId]
+          );
+        }
+      }
+
       // Upsert record into driver_tasks table for tracking
       const driverId = req.user?.id || null;
       const [existingTask] = await db.query(
@@ -281,18 +337,12 @@ const updateDriverTaskStatus = async (req, res) => {
             const title = "Food Delivered";
             const message = "Your requested food has been delivered successfully.";
 
-            // Avoid duplicate notifications if drop-off endpoint is invoked again
-            const [existingNotif] = await db.query(
-              "SELECT id FROM notifications WHERE recipient_id = ? AND donation_id = ? AND title = ?",
-              [recipient_id, donation_id, title]
-            );
-
-            if (existingNotif.length === 0) {
-              await db.query(
-                "INSERT INTO notifications (recipient_id, donation_id, title, message, is_read) VALUES (?, ?, ?, ?, FALSE)",
-                [recipient_id, donation_id, title, message]
-              );
-            }
+            await createNotification({
+              recipientId: recipient_id,
+              donationId: donation_id,
+              title,
+              message,
+            });
           }
         } catch (notifErr) {
           console.error("Could not create delivery notification:", notifErr.message);

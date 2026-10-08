@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import API from "../../services/api";
 import {
   CameraView,
   useCameraPermissions,
@@ -141,7 +142,7 @@ export default function VerifyPickup() {
   // CONFIRM PICKUP
   // =====================================================
 
-  const handleConfirmPickup = () => {
+  const handleConfirmPickup = async () => {
     if (!allChecked) {
         Alert.alert(
         "Verification Required",
@@ -150,17 +151,35 @@ export default function VerifyPickup() {
         return;
     }
 
-    router.push({
-      pathname: "/(driver)/confirm-dropoff",
-      params: {
-        taskType: params.taskType || "",
-        claimId: params.claimId || "",
-        requestId: params.requestId || "",
-        destinationAddress: params.destinationAddress || "",
-        destinationLatitude: params.destinationLatitude || "",
-        destinationLongitude: params.destinationLongitude || "",
-      },
-    });
+    try {
+      const response = await API.patch("/driver/task-status", {
+        taskType: params.taskType,
+        claimId: params.claimId,
+        requestId: params.requestId,
+        status: "PICKED_UP",
+      });
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || "Could not update pickup status.");
+      }
+
+      router.push({
+        pathname: "/(driver)/confirm-dropoff",
+        params: {
+          taskType: params.taskType || "",
+          claimId: params.claimId || "",
+          requestId: params.requestId || "",
+          destinationAddress: params.destinationAddress || "",
+          destinationLatitude: params.destinationLatitude || "",
+          destinationLongitude: params.destinationLongitude || "",
+        },
+      });
+    } catch (error) {
+      Alert.alert(
+        "Pickup Error",
+        error?.response?.data?.message || error.message || "Could not confirm pickup."
+      );
+    }
   };
 
   // =====================================================
