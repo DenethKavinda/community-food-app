@@ -1,4 +1,4 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,9 @@ import {
   TextInput,
   Image,
 } from "react-native";
+import MapLocationPicker from "../../components/MapLocationPicker";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import * as Location from "expo-location";
 import { AuthContext } from "../../context/AuthContext";
 import { createRequest } from "../../services/recipientService";
 import { getImageUrl } from "../../services/api";
@@ -97,6 +99,84 @@ export default function ConfirmRequest() {
   const [isEditingContact, setIsEditingContact] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ── Exact Map Location State ──
+  const [deliveryLatitude, setDeliveryLatitude] = useState(
+    params.delivery_latitude ? Number(params.delivery_latitude) : null
+  );
+  const [deliveryLongitude, setDeliveryLongitude] = useState(
+    params.delivery_longitude ? Number(params.delivery_longitude) : null
+  );
+  const [currentLocation, setCurrentLocation] = useState(null);
+
+  // Default region: User can pan this to find their exact location
+  const [mapRegion, setMapRegion] = useState({
+    latitude: params.delivery_latitude ? Number(params.delivery_latitude) : 6.9271, // Colombo fallback
+    longitude: params.delivery_longitude ? Number(params.delivery_longitude) : 79.8612, // Colombo fallback
+    latitudeDelta: 0.1,
+    longitudeDelta: 0.1,
+  });
+
+  // Request GPS location on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        const { latitude, longitude } = location.coords;
+        setCurrentLocation({ latitude, longitude });
+
+        // Center map on GPS *only* if no delivery location has been set yet
+        setMapRegion((prev) => {
+          // If we already have delivery coordinates (e.g. Edit mode), keep them centered.
+          if (!deliveryLatitude && !deliveryLongitude) {
+            return { ...prev, latitude, longitude };
+          }
+          return prev;
+        });
+      } catch (e) {
+        console.log("GPS Location error:", e);
+      }
+    })();
+  }, []);
+
+  const safeAlert = (title, message) => {
+    if (Platform.OS === "web") {
+      window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
+  // ── Reverse Geocode: convert lat/lng → human-readable address ────────────
+  const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
+
+  const reverseGeocode = async (lat, lng) => {
+    setIsGeocodingAddress(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.display_name) {
+          setDeliveryAddress(data.display_name);
+        }
+      }
+      // If the request fails or returns no address, keep the existing address silently.
+    } catch {
+      // Network or parse error — keep existing address, do nothing.
+    } finally {
+      setIsGeocodingAddress(false);
+    }
+  };
+
+
   // ── Stepper ────────────────────────────────────────────────────────────────
   // availablePortions is now always a valid integer, so Math.min/max work correctly
   const increment = () => setPortions((p) => Math.min(p + 1, item.availablePortions));
@@ -105,24 +185,33 @@ export default function ConfirmRequest() {
   // ── Confirm / Validation ───────────────────────────────────────────────────
   const handleConfirm = async () => {
     if (portions < 1 || portions > item.availablePortions) {
-      Alert.alert(
+      safeAlert(
         "Invalid Portions",
         `Please request between 1 and ${item.availablePortions} portions.`
       );
       return;
     }
 
-    if (!contactPhone.trim()) {
-      Alert.alert("Missing Information", "Please provide a contact phone number.");
+    if (!contactPhone || String(contactPhone).trim() === "") {
+      safeAlert("Missing Information", "Please provide a contact phone number.");
       return;
     }
 
-    if (fulfillment === "driver" && !deliveryAddress.trim()) {
-      Alert.alert(
-        "Missing Information",
-        "Please provide a delivery address for Volunteer Driver Delivery."
-      );
-      return;
+    if (fulfillment === "driver") {
+      if (!deliveryAddress || String(deliveryAddress).trim() === "") {
+        safeAlert(
+          "Missing Information",
+          "Please provide a delivery address for Volunteer Driver Delivery."
+        );
+        return;
+      }
+      if (deliveryLatitude === null || deliveryLongitude === null) {
+        safeAlert(
+          "Missing Information",
+          "Please select an exact delivery location on the map."
+        );
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -134,6 +223,8 @@ export default function ConfirmRequest() {
         fulfillment_method:
           fulfillment === "driver" ? "Volunteer Driver Delivery" : "Self Pickup",
         delivery_address: fulfillment === "driver" ? deliveryAddress : null,
+        delivery_latitude: fulfillment === "driver" ? deliveryLatitude : null,
+        delivery_longitude: fulfillment === "driver" ? deliveryLongitude : null,
         contact_phone: contactPhone,
         special_instructions: notes || null,
       };
@@ -153,12 +244,12 @@ export default function ConfirmRequest() {
           },
         });
       } else {
-        Alert.alert("Error", response.message || "Failed to submit request.");
+        safeAlert("Error", response.message || "Failed to submit request.");
         setIsSubmitting(false);
       }
     } catch (error) {
       console.error("Create request error:", error);
-      Alert.alert(
+      safeAlert(
         "Submission Failed",
         error.response?.data?.message ||
           "An error occurred while submitting your request. Please try again."
@@ -334,6 +425,31 @@ export default function ConfirmRequest() {
               last
             />
           </View>
+        )}
+
+        {/* ── Exact Map Location (Only for Driver) ── */}
+        {fulfillment === "driver" && (
+          <>
+            <SectionDivider title="EXACT DELIVERY LOCATION" />
+            <View style={styles.card}>
+              <MapLocationPicker
+                latitude={deliveryLatitude}
+                longitude={deliveryLongitude}
+                currentLocation={currentLocation}
+                initialRegion={mapRegion}
+                onLocationSelect={(lat, lng) => {
+                  setDeliveryLatitude(lat);
+                  setDeliveryLongitude(lng);
+                  reverseGeocode(lat, lng);
+                }}
+              />
+              {isGeocodingAddress && (
+                <Text style={styles.geocodingHint}>
+                  📍 Fetching address from selected location…
+                </Text>
+              )}
+            </View>
+          </>
         )}
 
         {/* ── Delivery Notes ── */}
@@ -717,6 +833,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: TEXT_PRIMARY,
     lineHeight: 20,
+  },
+
+  // ── Geocoding hint ──
+  geocodingHint: {
+    fontSize: 12,
+    color: GREEN_MID,
+    marginTop: 4,
+    textAlign: "center",
   },
 
   // ── Summary card ──

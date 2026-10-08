@@ -37,3 +37,7 @@ CREATE TABLE IF NOT EXISTS requests (
         REFERENCES users(id)
         ON DELETE CASCADE
 );
+
+ALTER TABLE requests
+ADD COLUMN delivery_latitude DECIMAL(10, 8) NULL,
+ADD COLUMN delivery_longitude DECIMAL(11, 8) NULL;
