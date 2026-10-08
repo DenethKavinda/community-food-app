@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform, StatusBar, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as Location from 'expo-location';
+import MapLocationPicker from "../../components/MapLocationPicker";
 import { fetchRequestById, updateRequest } from '../../services/recipientService';
 import { getImageUrl } from '../../services/api';
 
@@ -27,12 +29,78 @@ export default function RequestDetails() {
   const [editAddress, setEditAddress] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editLatitude, setEditLatitude] = useState(null);
+  const [editLongitude, setEditLongitude] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
+  const [mapRegion, setMapRegion] = useState({
+    latitude: 6.9271,
+    longitude: 79.8612,
+    latitudeDelta: 0.1,
+    longitudeDelta: 0.1,
+  });
   const [availablePortions, setAvailablePortions] = useState(1);
 
-  useEffect(() => {
-    if (params.id) {
-      loadRequestData();
+  const safeAlert = (title, message) => {
+    if (Platform.OS === "web") {
+      window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
     }
+  };
+
+  useEffect(() => {
+    if (!isEditing) return;
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        const { latitude, longitude } = location.coords;
+        setCurrentLocation({ latitude, longitude });
+
+        setMapRegion((prev) => {
+          if (!editLatitude && !editLongitude) {
+            return { ...prev, latitude, longitude };
+          }
+          return prev;
+        });
+      } catch (e) {
+        console.log("GPS Location error:", e);
+      }
+    })();
+  }, [isEditing]);
+
+  const reverseGeocode = async (lat, lng) => {
+    setIsGeocodingAddress(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.display_name) {
+          setEditAddress(data.display_name);
+        }
+      }
+    } catch {
+    } finally {
+      setIsGeocodingAddress(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!params.id) return;
+    loadRequestData();
+    // Poll every 10 s so driver status changes appear automatically
+    const interval = setInterval(loadRequestData, 10000);
+    return () => clearInterval(interval);
   }, [params.id]);
 
   const loadRequestData = async () => {
@@ -47,6 +115,14 @@ export default function RequestDetails() {
         setEditAddress(data.request.delivery_address || "");
         setEditPhone(data.request.contact_phone || "");
         setEditNotes(data.request.special_instructions || "");
+        
+        const lat = data.request.delivery_latitude ? Number(data.request.delivery_latitude) : null;
+        const lng = data.request.delivery_longitude ? Number(data.request.delivery_longitude) : null;
+        setEditLatitude(lat);
+        setEditLongitude(lng);
+        if (lat !== null && lng !== null) {
+          setMapRegion(prev => ({...prev, latitude: lat, longitude: lng}));
+        }
       }
     } catch (err) {
       console.error("Failed to fetch request details:", err);
@@ -57,16 +133,22 @@ export default function RequestDetails() {
 
   const handleSave = async () => {
     if (editPortions < 1 || editPortions > availablePortions) {
-      Alert.alert("Invalid Portions", `Please request between 1 and ${availablePortions} portions.`);
+      safeAlert("Invalid Portions", `Please request between 1 and ${availablePortions} portions.`);
       return;
     }
-    if (!editPhone.trim()) {
-      Alert.alert("Missing Information", "Please provide a contact phone number.");
+    if (!editPhone || String(editPhone).trim() === "") {
+      safeAlert("Missing Information", "Please provide a contact phone number.");
       return;
     }
-    if (editFulfillment === "driver" && !editAddress.trim()) {
-      Alert.alert("Missing Information", "Please provide a delivery address for Volunteer Driver Delivery.");
-      return;
+    if (editFulfillment === "driver") {
+      if (!editAddress || String(editAddress).trim() === "") {
+        safeAlert("Missing Information", "Please provide a delivery address for Volunteer Driver Delivery.");
+        return;
+      }
+      if (editLatitude === null || editLongitude === null) {
+        safeAlert("Missing Information", "Please select an exact delivery location on the map.");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -75,21 +157,23 @@ export default function RequestDetails() {
         requested_portions: editPortions,
         fulfillment_method: editFulfillment === "driver" ? "Volunteer Driver Delivery" : "Self Pickup",
         delivery_address: editFulfillment === "driver" ? editAddress : null,
+        delivery_latitude: editFulfillment === "driver" ? editLatitude : null,
+        delivery_longitude: editFulfillment === "driver" ? editLongitude : null,
         contact_phone: editPhone,
         special_instructions: editNotes || null,
       };
 
       const res = await updateRequest(params.id, requestData);
       if (res && res.success) {
-        Alert.alert("Success", "Request updated successfully.");
+        safeAlert("Success", "Request updated successfully.");
         await loadRequestData();
         setIsEditing(false);
       } else {
-        Alert.alert("Error", res?.message || "Failed to edit request.");
+        safeAlert("Error", res?.message || "Failed to edit request.");
       }
     } catch (err) {
       console.error("Update request error:", err);
-      Alert.alert("Error", err.response?.data?.message || "An error occurred while updating.");
+      safeAlert("Error", err.response?.data?.message || "An error occurred while updating.");
     } finally {
       setIsSubmitting(false);
     }
@@ -102,6 +186,14 @@ export default function RequestDetails() {
       setEditAddress(request.delivery_address || "");
       setEditPhone(request.contact_phone || "");
       setEditNotes(request.special_instructions || "");
+      
+      const lat = request.delivery_latitude ? Number(request.delivery_latitude) : null;
+      const lng = request.delivery_longitude ? Number(request.delivery_longitude) : null;
+      setEditLatitude(lat);
+      setEditLongitude(lng);
+      if (lat !== null && lng !== null) {
+         setMapRegion(prev => ({...prev, latitude: lat, longitude: lng}));
+      }
     }
     setIsEditing(false);
   };
@@ -212,6 +304,29 @@ export default function RequestDetails() {
           </TouchableOpacity>
 
           <SectionDivider title="DELIVERY & CONTACT INFO" />
+
+          {editFulfillment === "driver" && (
+            <View style={[styles.infoCard, { marginBottom: 16 }]}>
+              <Text style={styles.editLabel}>EXACT DELIVERY LOCATION</Text>
+              <MapLocationPicker
+                latitude={editLatitude}
+                longitude={editLongitude}
+                currentLocation={currentLocation}
+                initialRegion={mapRegion}
+                onLocationSelect={(lat, lng) => {
+                  setEditLatitude(lat);
+                  setEditLongitude(lng);
+                  reverseGeocode(lat, lng);
+                }}
+              />
+              {isGeocodingAddress && (
+                <Text style={styles.geocodingHint}>
+                  📍 Fetching address from selected location…
+                </Text>
+              )}
+            </View>
+          )}
+
           <View style={styles.infoCard}>
             <View style={styles.editField}>
               <Text style={styles.editLabel}>📍 Delivery Address</Text>
@@ -315,10 +430,13 @@ export default function RequestDetails() {
         <View style={styles.timeline}>
           {(() => {
             const status = request.request_status;
+            const driverStatus = request.driver_task_status;
+
             const isCancelled = status === "Cancelled";
             const isRejected = status === "Rejected";
-            const isApproved = status === "Approved" || status === "Completed";
-            const isCompleted = status === "Completed";
+            const isApproved = driverStatus === "ACCEPTED" || driverStatus === "PICKED_UP" || driverStatus === "DELIVERED" || status === "Approved" || status === "Completed";
+            const isPickedUp = driverStatus === "PICKED_UP" || driverStatus === "DELIVERED";
+            const isCompleted = driverStatus === "DELIVERED" || status === "Completed";
             
             return (
               <>
@@ -379,7 +497,7 @@ export default function RequestDetails() {
                         <View style={[styles.stepCircle, isApproved ? styles.stepCircleCompleted : {}]}>
                            {isApproved && <Feather name="check" size={12} color={GREEN} />}
                         </View>
-                        <View style={[styles.stepLine, isCompleted && styles.stepLineCompleted]} />
+                        <View style={[styles.stepLine, isPickedUp && styles.stepLineCompleted]} />
                       </View>
                       <View style={styles.stepContent}>
                         <Text style={isApproved ? styles.stepTitleCompleted : styles.stepTitle}>Approved</Text>
@@ -390,18 +508,20 @@ export default function RequestDetails() {
                     {/* Step 4 */}
                     <View style={styles.step}>
                       <View style={styles.stepIndicator}>
-                        <View style={[styles.stepCircle, isCompleted ? styles.stepCircleCompleted : (isApproved && !isCompleted ? styles.stepCircleActive : {})]}>
-                          {isCompleted ? (
+                        <View style={[styles.stepCircle, isPickedUp ? styles.stepCircleCompleted : (isApproved && !isPickedUp ? styles.stepCircleActive : {})]}>
+                          {isPickedUp ? (
                             <Feather name="check" size={12} color={GREEN} />
-                          ) : (isApproved && !isCompleted) ? (
+                          ) : (isApproved && !isPickedUp) ? (
                             <Feather name="check" size={12} color="#ffffff" style={styles.checkIconActive} />
                           ) : null}
                         </View>
                         <View style={[styles.stepLine, isCompleted && styles.stepLineCompleted]} />
                       </View>
                       <View style={styles.stepContent}>
-                        <Text style={((isApproved && !isCompleted) || isCompleted) ? styles.stepTitleCompleted : styles.stepTitle}>Food Pickup</Text>
-                        <Text style={styles.stepSubtitle}>{isCompleted ? "Picked up" : "Pending"}</Text>
+                        <Text style={isPickedUp ? styles.stepTitleCompleted : (isApproved ? styles.stepTitleCompleted : styles.stepTitle)}>
+                          {isPickedUp ? "Food Picked Up" : "Food Pickup"}
+                        </Text>
+                        <Text style={styles.stepSubtitle}>{isPickedUp ? "Food Picked Up" : "Pending"}</Text>
                       </View>
                     </View>
 
@@ -870,6 +990,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: TEXT_PRIMARY,
     lineHeight: 20,
+  },
+  geocodingHint: {
+    fontSize: 12,
+    color: "#388e3c",
+    marginTop: 4,
+    textAlign: "center",
   },
   stickyFooter: {
     backgroundColor: "#ffffff",

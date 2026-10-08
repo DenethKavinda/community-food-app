@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Image, ActivityIndicator, Platform } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,6 +29,7 @@ export default function DriversScreen() {
   const [mapLoading, setMapLoading] = useState(false);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const locationRequestRef = useRef(0);
 
   const submitClaim = async () => {
     if (!location.trim()) {
@@ -52,6 +53,7 @@ export default function DriversScreen() {
   };
 
   const updateLocationFromCoordinates = async (latitude, longitude) => {
+    const requestId = ++locationRequestRef.current;
     setCoordinates({ latitude, longitude });
     if (Platform.OS === "web") {
       setLocation(`Current location (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`);
@@ -64,7 +66,9 @@ export default function DriversScreen() {
       const formatted = [address?.name, address?.street, address?.city, address?.region]
         .filter(Boolean)
         .join(", ");
-      if (formatted) setLocation(formatted);
+      if (formatted && requestId === locationRequestRef.current) {
+        setLocation(formatted);
+      }
     } catch (error) {
       console.warn("Could not resolve map location:", error.message);
     }
@@ -91,7 +95,7 @@ export default function DriversScreen() {
             );
             setMapLoading(false);
           },
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
         return;
       }
@@ -101,7 +105,9 @@ export default function DriversScreen() {
         Alert.alert("Location permission required", "Allow location access to use your current location.");
         return;
       }
-      const current = await Location.getCurrentPositionAsync({});
+      const current = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
       await updateLocationFromCoordinates(current.coords.latitude, current.coords.longitude);
     } catch (_error) {
       Alert.alert("Location unavailable", "We could not get your current location.");
@@ -258,7 +264,16 @@ export default function DriversScreen() {
         <Ionicons name="locate-outline" size={18} color="#16a34a" />
         <Text style={styles.currentLocationText}>Use current location</Text>
       </TouchableOpacity>
-      <TextInput style={styles.input} value={location} onChangeText={setLocation} placeholder="Selected location" />
+      <TextInput
+        style={styles.input}
+        value={location}
+        onChangeText={(value) => {
+          locationRequestRef.current += 1;
+          setCoordinates(null);
+          setLocation(value);
+        }}
+        placeholder="Selected location"
+      />
       <View style={styles.helperRow}>
         <View style={styles.helperDot} />
         <Text style={styles.helperText}>Search for a place or tap the map to pin the pickup location.</Text>

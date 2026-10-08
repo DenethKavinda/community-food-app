@@ -1,7 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, StatusBar, ActivityIndicator, Alert, ScrollView, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import MapLocationPicker from "../../components/MapLocationPicker";
 import { fetchRequestById, updateRequest } from '../../services/recipientService';
 
 const GREEN = "#2e7d32";
@@ -22,6 +24,13 @@ const STATUS_LABELS = {
   Rejected:  "Rejected",
   Cancelled: "Cancelled",
   Completed: "Completed",
+};
+
+const getDisplayStatusLabel = (reqStatus, drvStatus) => {
+  if (drvStatus === "ACCEPTED") return "Approved";
+  if (drvStatus === "PICKED_UP") return "Food Picked Up";
+  if (drvStatus === "DELIVERED") return "Completed";
+  return STATUS_LABELS[reqStatus] || reqStatus;
 };
 
 export default function RequestStatus() {
@@ -47,7 +56,64 @@ export default function RequestStatus() {
   const [editAddress, setEditAddress] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editLatitude, setEditLatitude] = useState(null);
+  const [editLongitude, setEditLongitude] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [isGeocodingAddress, setIsGeocodingAddress] = useState(false);
+  const [mapRegion, setMapRegion] = useState({
+    latitude: 6.9271,
+    longitude: 79.8612,
+    latitudeDelta: 0.1,
+    longitudeDelta: 0.1,
+  });
   const [availablePortions, setAvailablePortions] = useState(1);
+
+  // Request GPS location on edit mount
+  useEffect(() => {
+    if (!isEditing) return;
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+
+        const location = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        const { latitude, longitude } = location.coords;
+        setCurrentLocation({ latitude, longitude });
+
+        setMapRegion((prev) => {
+          if (!editLatitude && !editLongitude) {
+            return { ...prev, latitude, longitude };
+          }
+          return prev;
+        });
+      } catch (e) {
+        console.log("GPS Location error:", e);
+      }
+    })();
+  }, [isEditing]); // re-run only when Edit is toggled
+
+  const reverseGeocode = async (lat, lng) => {
+    setIsGeocodingAddress(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.display_name) {
+          setEditAddress(data.display_name);
+        }
+      }
+    } catch {
+    } finally {
+      setIsGeocodingAddress(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -56,6 +122,9 @@ export default function RequestStatus() {
         return;
       }
       loadRequestData();
+      // Poll every 10 s so driver status changes appear automatically
+      const interval = setInterval(loadRequestData, 10000);
+      return () => clearInterval(interval);
     }, [requestId])
   );
 
@@ -76,6 +145,14 @@ export default function RequestStatus() {
         setEditAddress(data.request.delivery_address || "");
         setEditPhone(data.request.contact_phone || "");
         setEditNotes(data.request.special_instructions || "");
+        
+        const lat = data.request.delivery_latitude ? Number(data.request.delivery_latitude) : null;
+        const lng = data.request.delivery_longitude ? Number(data.request.delivery_longitude) : null;
+        setEditLatitude(lat);
+        setEditLongitude(lng);
+        if (lat !== null && lng !== null) {
+          setMapRegion(prev => ({...prev, latitude: lat, longitude: lng}));
+        }
       }
     } catch (err) {
       console.error("Failed to fetch request status:", err);
@@ -84,7 +161,7 @@ export default function RequestStatus() {
     }
   };
 
-  const statusLabel = STATUS_LABELS[requestStatus] || requestStatus;
+  const statusLabel = getDisplayStatusLabel(requestStatus, originalRequest?.driver_task_status);
 
   // Derive icon and colour from actual status
   const isCancelledOrRejected = requestStatus === "Cancelled" || requestStatus === "Rejected";
@@ -97,13 +174,19 @@ export default function RequestStatus() {
       Alert.alert("Invalid Portions", `Please request between 1 and ${availablePortions} portions.`);
       return;
     }
-    if (!editPhone.trim()) {
+    if (!editPhone || String(editPhone).trim() === "") {
       Alert.alert("Missing Information", "Please provide a contact phone number.");
       return;
     }
-    if (editFulfillment === "driver" && !editAddress.trim()) {
-      Alert.alert("Missing Information", "Please provide a delivery address for Volunteer Driver Delivery.");
-      return;
+    if (editFulfillment === "driver") {
+      if (!editAddress || String(editAddress).trim() === "") {
+        Alert.alert("Missing Information", "Please provide a delivery address for Volunteer Driver Delivery.");
+        return;
+      }
+      if (editLatitude === null || editLongitude === null) {
+        Alert.alert("Missing Information", "Please select an exact delivery location on the map.");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -113,6 +196,8 @@ export default function RequestStatus() {
         fulfillment_method:
           editFulfillment === "driver" ? "Volunteer Driver Delivery" : "Self Pickup",
         delivery_address: editFulfillment === "driver" ? editAddress : null,
+        delivery_latitude: editFulfillment === "driver" ? editLatitude : null,
+        delivery_longitude: editFulfillment === "driver" ? editLongitude : null,
         contact_phone: editPhone,
         special_instructions: editNotes || null,
       };
@@ -143,6 +228,14 @@ export default function RequestStatus() {
       setEditAddress(originalRequest.delivery_address || "");
       setEditPhone(originalRequest.contact_phone || "");
       setEditNotes(originalRequest.special_instructions || "");
+      
+      const lat = originalRequest.delivery_latitude ? Number(originalRequest.delivery_latitude) : null;
+      const lng = originalRequest.delivery_longitude ? Number(originalRequest.delivery_longitude) : null;
+      setEditLatitude(lat);
+      setEditLongitude(lng);
+      if (lat !== null && lng !== null) {
+         setMapRegion(prev => ({...prev, latitude: lat, longitude: lng}));
+      }
     }
     setIsEditing(false);
   };
@@ -211,6 +304,28 @@ export default function RequestStatus() {
           </TouchableOpacity>
 
           <SectionDivider title="DELIVERY & CONTACT INFO" />
+
+          {editFulfillment === "driver" && (
+            <View style={[styles.card, { marginBottom: 16 }]}>
+              <Text style={styles.editLabel}>EXACT DELIVERY LOCATION</Text>
+              <MapLocationPicker
+                latitude={editLatitude}
+                longitude={editLongitude}
+                currentLocation={currentLocation}
+                initialRegion={mapRegion}
+                onLocationSelect={(lat, lng) => {
+                  setEditLatitude(lat);
+                  setEditLongitude(lng);
+                  reverseGeocode(lat, lng);
+                }}
+              />
+              {isGeocodingAddress && (
+                <Text style={styles.geocodingHint}>
+                  📍 Fetching address from selected location…
+                </Text>
+              )}
+            </View>
+          )}
 
           <View style={styles.card}>
             <View style={styles.editField}>
@@ -307,6 +422,12 @@ export default function RequestStatus() {
               ? "Your request has been cancelled."
               : requestStatus === "Rejected"
               ? "Your request was rejected by the donor."
+              : statusLabel === "Food Picked Up"
+              ? "Food has been picked up by the driver."
+              : statusLabel === "Completed"
+              ? "Your request has been completed!"
+              : statusLabel === "Approved"
+              ? "Your request has been approved!"
               : "Your request has been sent to the donor.\nYou will be notified once it is confirmed."}
           </Text>
 
@@ -688,6 +809,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: TEXT_PRIMARY,
     lineHeight: 20,
+  },
+  geocodingHint: {
+    fontSize: 12,
+    color: GREEN_MID,
+    marginTop: 4,
+    textAlign: "center",
   },
   stickyFooter: {
     backgroundColor: "#ffffff",
