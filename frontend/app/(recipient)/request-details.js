@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform, StatusBar, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather, FontAwesome } from '@expo/vector-icons';
@@ -96,9 +96,11 @@ export default function RequestDetails() {
   };
 
   useEffect(() => {
-    if (params.id) {
-      loadRequestData();
-    }
+    if (!params.id) return;
+    loadRequestData();
+    // Poll every 10 s so driver status changes appear automatically
+    const interval = setInterval(loadRequestData, 10000);
+    return () => clearInterval(interval);
   }, [params.id]);
 
   const loadRequestData = async () => {
@@ -428,10 +430,13 @@ export default function RequestDetails() {
         <View style={styles.timeline}>
           {(() => {
             const status = request.request_status;
+            const driverStatus = request.driver_task_status;
+
             const isCancelled = status === "Cancelled";
             const isRejected = status === "Rejected";
-            const isApproved = status === "Approved" || status === "Completed";
-            const isCompleted = status === "Completed";
+            const isApproved = driverStatus === "ACCEPTED" || driverStatus === "PICKED_UP" || driverStatus === "DELIVERED" || status === "Approved" || status === "Completed";
+            const isPickedUp = driverStatus === "PICKED_UP" || driverStatus === "DELIVERED";
+            const isCompleted = driverStatus === "DELIVERED" || status === "Completed";
             
             return (
               <>
@@ -492,7 +497,7 @@ export default function RequestDetails() {
                         <View style={[styles.stepCircle, isApproved ? styles.stepCircleCompleted : {}]}>
                            {isApproved && <Feather name="check" size={12} color={GREEN} />}
                         </View>
-                        <View style={[styles.stepLine, isCompleted && styles.stepLineCompleted]} />
+                        <View style={[styles.stepLine, isPickedUp && styles.stepLineCompleted]} />
                       </View>
                       <View style={styles.stepContent}>
                         <Text style={isApproved ? styles.stepTitleCompleted : styles.stepTitle}>Approved</Text>
@@ -503,18 +508,20 @@ export default function RequestDetails() {
                     {/* Step 4 */}
                     <View style={styles.step}>
                       <View style={styles.stepIndicator}>
-                        <View style={[styles.stepCircle, isCompleted ? styles.stepCircleCompleted : (isApproved && !isCompleted ? styles.stepCircleActive : {})]}>
-                          {isCompleted ? (
+                        <View style={[styles.stepCircle, isPickedUp ? styles.stepCircleCompleted : (isApproved && !isPickedUp ? styles.stepCircleActive : {})]}>
+                          {isPickedUp ? (
                             <Feather name="check" size={12} color={GREEN} />
-                          ) : (isApproved && !isCompleted) ? (
+                          ) : (isApproved && !isPickedUp) ? (
                             <Feather name="check" size={12} color="#ffffff" style={styles.checkIconActive} />
                           ) : null}
                         </View>
                         <View style={[styles.stepLine, isCompleted && styles.stepLineCompleted]} />
                       </View>
                       <View style={styles.stepContent}>
-                        <Text style={((isApproved && !isCompleted) || isCompleted) ? styles.stepTitleCompleted : styles.stepTitle}>Food Pickup</Text>
-                        <Text style={styles.stepSubtitle}>{isCompleted ? "Picked up" : "Pending"}</Text>
+                        <Text style={isPickedUp ? styles.stepTitleCompleted : (isApproved ? styles.stepTitleCompleted : styles.stepTitle)}>
+                          {isPickedUp ? "Food Picked Up" : "Food Pickup"}
+                        </Text>
+                        <Text style={styles.stepSubtitle}>{isPickedUp ? "Food Picked Up" : "Pending"}</Text>
                       </View>
                     </View>
 

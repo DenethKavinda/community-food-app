@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, StatusBar, ActivityIndicator, Alert, ScrollView, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -24,6 +24,13 @@ const STATUS_LABELS = {
   Rejected:  "Rejected",
   Cancelled: "Cancelled",
   Completed: "Completed",
+};
+
+const getDisplayStatusLabel = (reqStatus, drvStatus) => {
+  if (drvStatus === "ACCEPTED") return "Approved";
+  if (drvStatus === "PICKED_UP") return "Food Picked Up";
+  if (drvStatus === "DELIVERED") return "Completed";
+  return STATUS_LABELS[reqStatus] || reqStatus;
 };
 
 export default function RequestStatus() {
@@ -115,6 +122,9 @@ export default function RequestStatus() {
         return;
       }
       loadRequestData();
+      // Poll every 10 s so driver status changes appear automatically
+      const interval = setInterval(loadRequestData, 10000);
+      return () => clearInterval(interval);
     }, [requestId])
   );
 
@@ -151,7 +161,7 @@ export default function RequestStatus() {
     }
   };
 
-  const statusLabel = STATUS_LABELS[requestStatus] || requestStatus;
+  const statusLabel = getDisplayStatusLabel(requestStatus, originalRequest?.driver_task_status);
 
   // Derive icon and colour from actual status
   const isCancelledOrRejected = requestStatus === "Cancelled" || requestStatus === "Rejected";
@@ -412,6 +422,12 @@ export default function RequestStatus() {
               ? "Your request has been cancelled."
               : requestStatus === "Rejected"
               ? "Your request was rejected by the donor."
+              : statusLabel === "Food Picked Up"
+              ? "Food has been picked up by the driver."
+              : statusLabel === "Completed"
+              ? "Your request has been completed!"
+              : statusLabel === "Approved"
+              ? "Your request has been approved!"
               : "Your request has been sent to the donor.\nYou will be notified once it is confirmed."}
           </Text>
 
