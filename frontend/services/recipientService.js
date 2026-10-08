@@ -94,6 +94,11 @@ export const createFoodBankInventoryItem = async (item) => {
   return response.data;
 };
 
+export const updateFoodBankInventoryItem = async (id, item) => {
+  const response = await API.patch(`/food-bank-inventory/${id}`, item);
+  return response.data;
+};
+
 export const deleteFoodBankInventoryItem = async (id) => {
   const response = await API.delete(`/food-bank-inventory/${id}`);
   return response.data;

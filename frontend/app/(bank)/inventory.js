@@ -18,6 +18,7 @@ import {
   createFoodBankInventoryItem,
   deleteFoodBankInventoryItem,
   fetchFoodBankInventory,
+  updateFoodBankInventoryItem,
 } from "../../services/recipientService";
 
 const statusConfig = {
@@ -56,6 +57,7 @@ export default function InventoryScreen() {
   const [webDate, setWebDate] = useState("");
   const [webTime, setWebTime] = useState("");
   const [unitPreset, setUnitPreset] = useState("portions");
+  const [editingItemId, setEditingItemId] = useState(null);
   const [form, setForm] = useState({
     item_name: "",
     category: "",
@@ -94,17 +96,23 @@ export default function InventoryScreen() {
     setSaving(true);
     setError("");
     try {
-      await createFoodBankInventoryItem({
+      const payload = {
         ...form,
         item_name: form.item_name.trim(),
         quantity: Number(form.quantity),
         expiry_at: form.expiry_at || null,
-      });
+      };
+      if (editingItemId) {
+        await updateFoodBankInventoryItem(editingItemId, payload);
+      } else {
+        await createFoodBankInventoryItem(payload);
+      }
       setForm({ item_name: "", category: "", quantity: "", quantity_unit: "portions", expiry_at: "", notes: "" });
       setUnitPreset("portions");
       setExpiryDate(null);
       setWebDate("");
       setWebTime("");
+      setEditingItemId(null);
       setModalVisible(false);
       await loadInventory();
     } catch (saveError) {
@@ -113,6 +121,30 @@ export default function InventoryScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openEdit = (item) => {
+    setEditingItemId(item.id);
+    setForm({
+      item_name: item.item_name || "",
+      category: item.category || "",
+      quantity: String(item.quantity ?? ""),
+      quantity_unit: item.quantity_unit || "portions",
+      expiry_at: item.expiry_at || "",
+      notes: item.notes || "",
+    });
+    setUnitPreset(UNIT_OPTIONS.includes(item.quantity_unit) ? item.quantity_unit : "other");
+    if (item.expiry_at) {
+      const date = new Date(item.expiry_at);
+      if (!Number.isNaN(date.getTime())) {
+        setExpiryDate(date);
+        setWebDate(date.toISOString().slice(0, 10));
+        setWebTime(date.toTimeString().slice(0, 5));
+      }
+    } else {
+      clearExpiry();
+    }
+    setModalVisible(true);
   };
 
   const setNativeExpiry = (value, type) => {
@@ -176,7 +208,16 @@ export default function InventoryScreen() {
           <Text style={styles.title}>Inventory Overview</Text>
           <Text style={styles.subtitle}>Claimed donations and manually added stock</Text>
         </View>
-        <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => {
+            setEditingItemId(null);
+            setForm({ item_name: "", category: "", quantity: "", quantity_unit: "portions", expiry_at: "", notes: "" });
+            setUnitPreset("portions");
+            clearExpiry();
+            setModalVisible(true);
+          }}
+        >
           <Ionicons name="add" size={19} color="#ffffff" />
           <Text style={styles.addButtonText}>Add Item</Text>
         </TouchableOpacity>
@@ -213,13 +254,18 @@ export default function InventoryScreen() {
                     </View>
                   </View>
                   <Text style={styles.quantity}>{item.quantity} {item.quantity_unit || "items"} {item.category ? `• ${item.category}` : ""}</Text>
-                  <Text style={styles.expiry}>Expires: {formatExpiry(item.expiry_at || item.expiry_window)}</Text>
+                  <Text style={styles.expiry}>Expires: {formatExpiry(item.expiry_at || item.expiry_window || item.donor_expiry_window)}</Text>
                   <Text style={styles.source}>{item.source_type === "donation" ? "Claimed donation" : "Manually added"}</Text>
                 </View>
                 {item.source_type === "manual" && (
-                  <TouchableOpacity onPress={() => removeItem(item)} accessibilityLabel={`Remove ${item.item_name}`}>
-                    <Ionicons name="trash-outline" size={19} color="#b91c1c" />
-                  </TouchableOpacity>
+                  <View style={styles.itemActions}>
+                    <TouchableOpacity onPress={() => openEdit(item)} accessibilityLabel={`Edit ${item.item_name}`}>
+                      <Ionicons name="create-outline" size={19} color="#16a34a" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => removeItem(item)} accessibilityLabel={`Remove ${item.item_name}`}>
+                      <Ionicons name="trash-outline" size={19} color="#b91c1c" />
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             );
@@ -231,7 +277,7 @@ export default function InventoryScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Inventory Item</Text>
+              <Text style={styles.modalTitle}>{editingItemId ? "Edit Inventory Item" : "Add Inventory Item"}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}><Ionicons name="close" size={24} color="#475569" /></TouchableOpacity>
             </View>
             <TextInput style={styles.input} placeholder="Item name *" value={form.item_name} onChangeText={(value) => setForm({ ...form, item_name: value })} />
@@ -266,12 +312,12 @@ export default function InventoryScreen() {
                 </TouchableOpacity>
               </View>
             )}
-            {(form.expiry_at || expiryDate || webDate || webTime) && (
+            {!!(form.expiry_at || expiryDate || webDate || webTime) && (
               <TouchableOpacity onPress={clearExpiry}><Text style={styles.clearExpiry}>Clear expiry date/time</Text></TouchableOpacity>
             )}
             <TextInput style={[styles.input, styles.notesInput]} placeholder="Additional notes" multiline value={form.notes} onChangeText={(value) => setForm({ ...form, notes: value })} />
             <TouchableOpacity style={styles.saveButton} disabled={saving} onPress={saveItem}>
-              {saving ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveButtonText}>Save Inventory Item</Text>}
+              {saving ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveButtonText}>{editingItemId ? "Update Inventory Item" : "Save Inventory Item"}</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -349,6 +395,7 @@ const styles = StyleSheet.create({
   itemCard: { flexDirection: "row", alignItems: "flex-start", gap: 11, marginBottom: 10, padding: 13, borderRadius: 14, backgroundColor: "#ffffff", borderWidth: 1, borderColor: "#e2e8f0" },
   itemIcon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "#dcfce7" },
   itemCopy: { flex: 1 },
+  itemActions: { flexDirection: "row", gap: 12, paddingTop: 2 },
   itemTitleRow: { flexDirection: "row", alignItems: "flex-start", gap: 7 },
   itemName: { flex: 1, fontSize: 14, fontWeight: "800", color: "#172033" },
   statusBadge: { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 8 },
