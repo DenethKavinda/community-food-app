@@ -55,8 +55,18 @@ export default function QuantityUnitSelector({
 
   const availableUnits = getAvailableUnits();
 
-  const currentUnitObj =
-    ALL_UNITS.find((u) => u.value === (unit || "").toLowerCase()) || null;
+  const selectedUnitLabel = (() => {
+    if (!unit || !String(unit).trim()) return null;
+    const trimmed = String(unit).trim().toLowerCase();
+    const found = ALL_UNITS.find(
+      (u) => u.value === trimmed || u.label.toLowerCase() === trimmed
+    );
+    if (found) return found.label;
+    if (trimmed === "kg") return "Kg";
+    if (trimmed === "g") return "g";
+    if (trimmed === "ml") return "ml";
+    return String(unit).trim().charAt(0).toUpperCase() + String(unit).trim().slice(1);
+  })();
 
   const handleSelectUnit = (unitValue) => {
     onChangeUnit(unitValue);
@@ -102,7 +112,7 @@ export default function QuantityUnitSelector({
         <TouchableOpacity
           style={[
             styles.unitDropdownTrigger,
-            !currentUnitObj && styles.unitDropdownTriggerEmpty,
+            !selectedUnitLabel && styles.unitDropdownTriggerEmpty,
             unitError && styles.errorBorder,
           ]}
           onPress={() => setModalVisible(true)}
@@ -111,16 +121,16 @@ export default function QuantityUnitSelector({
           <Text
             style={[
               styles.unitTriggerText,
-              !currentUnitObj && styles.unitTriggerTextEmpty,
+              !selectedUnitLabel && styles.unitTriggerTextEmpty,
             ]}
             numberOfLines={1}
           >
-            {currentUnitObj ? currentUnitObj.label : "Choose"}
+            {selectedUnitLabel || "Choose"}
           </Text>
           <Ionicons
             name="chevron-down"
             size={18}
-            color={currentUnitObj ? "#087A3D" : "#6B7280"}
+            color={selectedUnitLabel ? "#087A3D" : "#6B7280"}
             style={{ marginLeft: 4 }}
           />
         </TouchableOpacity>

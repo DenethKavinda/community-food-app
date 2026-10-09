@@ -313,6 +313,7 @@ if (showCamera) {
             <Image
               source={{
                 uri:
+                  params.imageUrl ||
                   "https://images.unsplash.com/photo-1547592180-85f173990554?w=400",
               }}
               style={styles.foodImage}
@@ -321,12 +322,12 @@ if (showCamera) {
             <View style={styles.foodInfo}>
               <View style={styles.foodTitleRow}>
                 <Text style={styles.foodTitle}>
-                  Rice & Curry
+                  {params.mealName || "Food Donation"}
                 </Text>
 
                 <View style={styles.portionBadge}>
                   <Text style={styles.portionText}>
-                    10 portions
+                    {params.quantity || "0"} {params.quantityUnit || "portions"}
                   </Text>
                 </View>
               </View>
@@ -339,7 +340,7 @@ if (showCamera) {
                 />
 
                 <Text style={styles.detailText}>
-                  ABC Restaurant
+                  {params.donorName || params.pickupAddress || "Pickup location unavailable"}
                 </Text>
               </View>
 
@@ -351,7 +352,7 @@ if (showCamera) {
                 />
 
                 <Text style={styles.detailText}>
-                  11:30 AM
+                  {params.expiryWindow || "Pickup time unavailable"}
                 </Text>
               </View>
             </View>
@@ -374,7 +375,7 @@ if (showCamera) {
 
             <CheckItem
               checked={checks.quantity}
-              label="Quantity matches (10 portions)"
+              label={`Quantity matches (${params.quantity || "0"} ${params.quantityUnit || "portions"})`}
               onPress={() =>
                 toggleCheck("quantity")
               }
