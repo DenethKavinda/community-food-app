@@ -429,19 +429,17 @@ export default function DonationHistoryScreen() {
                         />
                       </TouchableOpacity>
 
-                      {item.status === "Pending" && (
-                        <TouchableOpacity
-                          style={styles.deleteIconBtn}
-                          onPress={() => setDeletingDonation(item)}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons
-                            name="trash-outline"
-                            size={16}
-                            color="#DC2626"
-                          />
-                        </TouchableOpacity>
-                      )}
+                      <TouchableOpacity
+                        style={styles.deleteIconBtn}
+                        onPress={() => setDeletingDonation(item)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons
+                          name="trash-outline"
+                          size={16}
+                          color="#DC2626"
+                        />
+                      </TouchableOpacity>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -591,39 +589,21 @@ export default function DonationHistoryScreen() {
 
                 {/* Actions in View Modal */}
                 <View style={styles.modalActionButtonsRow}>
-                  {selectedDonation.status === "Pending" ? (
-                    <TouchableOpacity
-                      style={styles.deleteModalBtn}
-                      onPress={() => setDeletingDonation(selectedDonation)}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={18}
-                        color="#DC2626"
-                        style={{ marginRight: 6 }}
-                      />
-                      <Text style={styles.deleteModalBtnText}>
-                        Delete Donation
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.readOnlyNoteBox}>
-                      <Ionicons
-                        name="information-circle-outline"
-                        size={16}
-                        color="#6B7280"
-                        style={{ marginRight: 4 }}
-                      />
-                      <Text style={styles.readOnlyNoteText}>
-                        Status:{" "}
-                        {selectedDonation.status === "Active"
-                          ? "Reserved"
-                          : selectedDonation.status}{" "}
-                        (Read Only)
-                      </Text>
-                    </View>
-                  )}
+                  <TouchableOpacity
+                    style={styles.deleteModalBtn}
+                    onPress={() => setDeletingDonation(selectedDonation)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={18}
+                      color="#DC2626"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.deleteModalBtnText}>
+                      Delete Donation
+                    </Text>
+                  </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.closeModalPrimaryBtn}

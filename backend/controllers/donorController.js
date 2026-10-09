@@ -406,9 +406,21 @@ exports.updateDonationStatus = async (req, res) => {
 // 5. DELETE DONATION
 exports.deleteDonation = async (req, res) => {
   const { id } = req.params;
+  const donor_id = req.user ? req.user.id : null;
 
   try {
-    const [result] = await pool.query("DELETE FROM donations WHERE id = ?", [id]);
+    // Delete dependent references first if any to avoid foreign key issues
+    await pool.query("DELETE FROM notifications WHERE donation_id = ?", [id]).catch(() => {});
+    await pool.query("DELETE FROM requests WHERE donation_id = ?", [id]).catch(() => {});
+    await pool.query("DELETE FROM food_bank_claims WHERE donation_id = ?", [id]).catch(() => {});
+    await pool.query("DELETE FROM driver_tasks WHERE donation_id = ?", [id]).catch(() => {});
+
+    let result;
+    if (donor_id) {
+      [result] = await pool.query("DELETE FROM donations WHERE id = ? AND donor_id = ?", [id, donor_id]);
+    } else {
+      [result] = await pool.query("DELETE FROM donations WHERE id = ?", [id]);
+    }
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Donation item not found." });
@@ -416,6 +428,7 @@ exports.deleteDonation = async (req, res) => {
 
     res.json({ message: "Donation post deleted successfully." });
   } catch (error) {
+    console.error("Delete donation error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
