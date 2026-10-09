@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS donations (
     quantity VARCHAR(100) NOT NULL,
     quantity_unit VARCHAR(50) DEFAULT 'portions',
     location VARCHAR(255) NOT NULL,
+    latitude DECIMAL(10, 8) NULL,
+    longitude DECIMAL(11, 8) NULL,
     expiry_window VARCHAR(100) NOT NULL,
     notes TEXT NULL,
     image_url VARCHAR(500) NULL,
@@ -26,6 +28,9 @@ CREATE TABLE IF NOT EXISTS donations (
     FOREIGN KEY (food_item_id) REFERENCES food_items(id) ON DELETE
     SET NULL
 );
--- 2. Migration statements if updating existing database:
+
+-- 2. Migration statements if updating an existing database:
 -- ALTER TABLE donations ADD COLUMN quantity_unit VARCHAR(50) DEFAULT 'portions' AFTER quantity;
+-- ALTER TABLE donations ADD COLUMN latitude DECIMAL(10, 8) NULL AFTER location;
+-- ALTER TABLE donations ADD COLUMN longitude DECIMAL(11, 8) NULL AFTER latitude;
 -- ALTER TABLE donations MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending';

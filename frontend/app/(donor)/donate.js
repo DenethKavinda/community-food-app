@@ -72,6 +72,8 @@ export default function DonateFoodScreen() {
 
   // Form State
   const [location, setLocation] = useState("");
+  const [latitude, setLatitude] = useState(null);
+  const [longitude, setLongitude] = useState(null);
   const [mealName, setMealName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [quantityUnit, setQuantityUnit] = useState("");
@@ -131,8 +133,14 @@ export default function DonateFoodScreen() {
       }
 
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const address = await reverseGeocodeCoords(loc.coords.latitude, loc.coords.longitude);
+      const lat = loc.coords.latitude;
+      const lng = loc.coords.longitude;
+      const address = await reverseGeocodeCoords(lat, lng);
+
       setLocation(address);
+      setLatitude(lat);
+      setLongitude(lng);
+
       if (errors.location) {
         setErrors((prev) => ({ ...prev, location: undefined }));
       }
@@ -196,7 +204,7 @@ export default function DonateFoodScreen() {
 
     // 4. Pickup Location validation
     if (!location || !location.trim()) {
-      newErrors.location = "Please select or enter a pickup location.";
+      newErrors.location = "Please select a pickup location.";
     }
 
     // 5. Expiry Window validation
@@ -229,6 +237,8 @@ export default function DonateFoodScreen() {
         quantity: parsedQty,
         quantity_unit: quantityUnit.toLowerCase(),
         location: location.trim(),
+        latitude,
+        longitude,
         expiry_window: expiryWindow.trim(),
         notes: notes.trim(),
         image_base64: selectedImage && selectedImage.startsWith("data:image") ? selectedImage : null,
@@ -557,7 +567,9 @@ export default function DonateFoodScreen() {
         onClose={() => setIsMapModalVisible(false)}
         initialAddress={location}
         onSelectLocation={(selected) => {
-          setLocation(selected.address);
+          setLocation(selected.address || "");
+          setLatitude(selected.latitude !== undefined && selected.latitude !== null ? selected.latitude : null);
+          setLongitude(selected.longitude !== undefined && selected.longitude !== null ? selected.longitude : null);
           if (errors.location) {
             setErrors((prev) => ({ ...prev, location: undefined }));
           }

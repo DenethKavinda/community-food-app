@@ -25,14 +25,34 @@ const foodBankClaimsTableReady = pool.query(`
   )
 `).catch((error) => console.error("Food-bank claims table setup failed:", error));
 
+// Auto-ensure latitude and longitude columns exist in donations table
+const ensureDonationLocationColumns = async () => {
+  try {
+    const [latCols] = await pool.query("SHOW COLUMNS FROM donations LIKE 'latitude'");
+    if (latCols.length === 0) {
+      await pool.query("ALTER TABLE donations ADD COLUMN latitude DECIMAL(10, 8) NULL AFTER location");
+    }
+    const [lngCols] = await pool.query("SHOW COLUMNS FROM donations LIKE 'longitude'");
+    if (lngCols.length === 0) {
+      await pool.query("ALTER TABLE donations ADD COLUMN longitude DECIMAL(11, 8) NULL AFTER latitude");
+    }
+  } catch (err) {
+    console.warn("Donations location columns setup warning:", err.message);
+  }
+};
+ensureDonationLocationColumns();
+
 // 1. CREATE NEW FOOD DONATION
 exports.createDonation = async (req, res) => {
   if (!req.user || !req.user.id) {
     return res.status(401).json({ message: "Authentication required. Please log in." });
   }
 
-  const { food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_base64, image_url } = req.body;
+  const { food_item_id, meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_base64, image_url } = req.body;
   const donor_id = req.user.id;
+
+  let parsedLat = latitude !== undefined && latitude !== null && !isNaN(Number(latitude)) ? parseFloat(latitude) : null;
+  let parsedLng = longitude !== undefined && longitude !== null && !isNaN(Number(longitude)) ? parseFloat(longitude) : null;
 
   let finalMealName = meal_name ? meal_name.trim() : "";
   let validFoodItemId = food_item_id ? parseInt(food_item_id) : null;
@@ -104,9 +124,9 @@ exports.createDonation = async (req, res) => {
 
     try {
       [result] = await pool.query(
-        `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl, statusToUse]
+        `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_url, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl, statusToUse]
       );
     } catch (dbErr) {
       console.warn("DB Query attempt 1 note:", dbErr.message);
@@ -116,16 +136,16 @@ exports.createDonation = async (req, res) => {
         try {
           await pool.query("ALTER TABLE donations MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending'");
           [result] = await pool.query(
-            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
-            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl]
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl]
           );
         } catch (alterErr) {
           console.warn("Could not alter status column, falling back to 'Active':", alterErr.message);
           [result] = await pool.query(
-            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, expiry_window, notes, image_url, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
-            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, expiry_window, notes || null, savedImageUrl]
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl]
           );
         }
       } else {
@@ -133,9 +153,9 @@ exports.createDonation = async (req, res) => {
         const combinedQty = `${numericQty} ${finalQuantityUnit}`;
         try {
           [result] = await pool.query(
-            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
-            [donor_id, validFoodItemId, finalMealName, combinedQty, location, expiry_window, notes || null, savedImageUrl]
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, latitude, longitude, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+            [donor_id, validFoodItemId, finalMealName, combinedQty, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl]
           );
         } catch (err2) {
           if (err2.errno === 1265 || err2.code === "WARN_DATA_TRUNCATED") {
@@ -143,9 +163,9 @@ exports.createDonation = async (req, res) => {
               await pool.query("ALTER TABLE donations MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending'");
             } catch (e) {}
             [result] = await pool.query(
-              `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, expiry_window, notes, image_url, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
-              [donor_id, validFoodItemId, finalMealName, combinedQty, location, expiry_window, notes || null, savedImageUrl]
+              `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, latitude, longitude, expiry_window, notes, image_url, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+              [donor_id, validFoodItemId, finalMealName, combinedQty, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl]
             );
           } else {
             throw err2;
