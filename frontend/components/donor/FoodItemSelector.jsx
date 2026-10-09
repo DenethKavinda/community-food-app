@@ -17,6 +17,7 @@ export default function FoodItemSelector({
   foodItems = [],
   isLoading = false,
   onRefreshItems,
+  hasError = false,
 }) {
   const router = useRouter();
   const [modalVisible, setModalVisible] = useState(false);
@@ -52,7 +53,9 @@ export default function FoodItemSelector({
   return (
     <View style={styles.container}>
       <View style={styles.labelRow}>
-        <Text style={styles.label}>Food or Meal</Text>
+        <Text style={styles.label}>
+          Food or Meal <Text style={{ color: "#DC2626" }}>*</Text>
+        </Text>
         <TouchableOpacity
           onPress={handleAddNewFood}
           style={styles.addQuickBtn}
@@ -65,7 +68,7 @@ export default function FoodItemSelector({
 
       {/* Main Trigger Dropdown Button */}
       <TouchableOpacity
-        style={styles.dropdownTrigger}
+        style={[styles.dropdownTrigger, hasError && styles.errorBorder]}
         onPress={() => setModalVisible(true)}
         activeOpacity={0.8}
       >
@@ -438,5 +441,8 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
+  },
+  errorBorder: {
+    borderColor: "#DC2626",
   },
 });

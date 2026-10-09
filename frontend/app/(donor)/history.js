@@ -63,13 +63,16 @@ export default function DonationHistoryScreen() {
           : "";
 
         const formatted = data.donations.map((item) => {
-          let formattedQty = item.quantity || "";
-          if (item.quantity_unit) {
-            formattedQty = `${item.quantity} ${item.quantity_unit.charAt(0).toUpperCase() + item.quantity_unit.slice(1)}`;
-          }
+          const origQty = item.original_quantity ?? (parseInt(item.quantity) || 0);
+          const resQty = item.reserved_quantity ?? 0;
+          const availQty = item.available_quantity ?? Math.max(0, origQty - resQty);
+          const unit = item.quantity_unit
+            ? item.quantity_unit.charAt(0).toUpperCase() + item.quantity_unit.slice(1)
+            : "Portions";
 
-          let img =
-            "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80";
+          let formattedQty = `${origQty} ${unit}`;
+
+          let img = null;
           if (item.image_url) {
             img = item.image_url.startsWith("http")
               ? item.image_url
@@ -80,6 +83,10 @@ export default function DonationHistoryScreen() {
             id: String(item.id),
             title: item.meal_name,
             quantity: formattedQty,
+            originalQuantity: origQty,
+            reservedQuantity: resQty,
+            availableQuantity: availQty,
+            unit: unit,
             location: item.location,
             expiry: item.expiry_window || "Today, 05:00 PM",
             notes: item.notes || "None provided",
@@ -246,17 +253,8 @@ export default function DonationHistoryScreen() {
 
         <Text style={styles.subHeaderTitle}>My Donations</Text>
 
-        {user?.avatar_url ? (
-          <Image
-            source={{ uri: getImageUrl(user.avatar_url) }}
-            style={styles.avatar}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.avatarPlaceholderHeader}>
-            <Ionicons name="person" size={18} color="#087A3D" />
-          </View>
-        )}
+        {/* Empty spacer to keep title centered after removing profile icon */}
+        <View style={{ width: 34 }} />
       </View>
 
       <View style={styles.mainContainer}>
@@ -358,11 +356,18 @@ export default function DonationHistoryScreen() {
                   activeOpacity={0.85}
                   onPress={() => setSelectedDonation(item)}
                 >
-                  <Image
-                    source={{ uri: item.image }}
-                    style={styles.cardImage}
-                    resizeMode="cover"
-                  />
+                  {item.image ? (
+                    <Image
+                      source={{ uri: item.image }}
+                      style={styles.cardImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.noImageCardPlaceholder}>
+                      <Ionicons name="camera-outline" size={20} color="#9CA3AF" />
+                      <Text style={styles.noImageCardText}>No Image</Text>
+                    </View>
+                  )}
 
                   <View style={styles.cardInfo}>
                     <Text style={styles.cardTitle} numberOfLines={1}>
@@ -370,26 +375,37 @@ export default function DonationHistoryScreen() {
                     </Text>
 
                     <View style={styles.metaRow}>
-                      <Text
-                        style={[
-                          styles.quantityText,
-                          (item.status === "Active" ||
-                            item.status === "Pending") &&
-                            styles.quantityTextActive,
-                        ]}
-                      >
-                        {item.quantity}
-                      </Text>
-                      <Text style={styles.bulletDot}>•</Text>
+                      <Ionicons
+                        name="location-outline"
+                        size={12}
+                        color="#6B7280"
+                        style={{ marginRight: 2 }}
+                      />
                       <Text style={styles.locationText} numberOfLines={1}>
                         {item.location}
+                      </Text>
+                    </View>
+
+                    {/* Quantity Breakdown Box */}
+                    <View style={styles.qtyBreakdownBox}>
+                      <Text style={styles.qtyLineText}>
+                        Original: <Text style={styles.qtyBold}>{item.originalQuantity} {item.unit}</Text>
+                        {"  •  "}Reserved: <Text style={styles.qtyBold}>{item.reservedQuantity} {item.unit}</Text>
+                      </Text>
+                      <Text style={[styles.qtyLineText, { marginTop: 2 }]}>
+                        Available:{" "}
+                        {item.availableQuantity === 0 ? (
+                          <Text style={styles.fullyReservedBadge}>Fully Reserved</Text>
+                        ) : (
+                          <Text style={styles.availableBold}>{item.availableQuantity} {item.unit}</Text>
+                        )}
                       </Text>
                     </View>
 
                     <View style={styles.dateRow}>
                       <Ionicons
                         name="calendar-outline"
-                        size={13}
+                        size={12}
                         color="#6B7280"
                         style={{ marginRight: 4 }}
                       />
@@ -459,11 +475,18 @@ export default function DonationHistoryScreen() {
 
             {selectedDonation && (
               <ScrollView showsVerticalScrollIndicator={false}>
-                <Image
-                  source={{ uri: selectedDonation.image }}
-                  style={styles.detailsImage}
-                  resizeMode="cover"
-                />
+                {selectedDonation.image ? (
+                  <Image
+                    source={{ uri: selectedDonation.image }}
+                    style={styles.detailsImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.detailsNoImagePlaceholder}>
+                    <Ionicons name="camera-outline" size={32} color="#9CA3AF" />
+                    <Text style={styles.detailsNoImageText}>No Image Available</Text>
+                  </View>
+                )}
 
                 <View style={styles.detailsHeaderRow}>
                   <Text style={styles.detailsTitle}>
@@ -473,18 +496,39 @@ export default function DonationHistoryScreen() {
                 </View>
 
                 <View style={styles.detailsGrid}>
-                  {/* Quantity */}
-                  <View style={styles.detailCard}>
+                  {/* Quantity & Availability Card (Full Width) */}
+                  <View style={[styles.detailCard, { width: "100%", backgroundColor: "#F8FAFC", borderColor: "#E2E8F0" }]}>
                     <MaterialCommunityIcons
                       name="silverware-fork-knife"
-                      size={18}
+                      size={20}
                       color="#087A3D"
+                      style={{ marginTop: 2 }}
                     />
                     <View style={styles.detailTextBox}>
-                      <Text style={styles.detailLabel}>Quantity</Text>
-                      <Text style={styles.detailValue}>
-                        {selectedDonation.quantity}
-                      </Text>
+                      <Text style={styles.detailLabel}>Quantity & Availability</Text>
+                      <View style={styles.qtyTableContainer}>
+                        {/* Row 1: Original Quantity */}
+                        <View style={styles.qtyTableRow}>
+                          <Text style={styles.qtyTableLabel}>Original Quantity</Text>
+                          <Text style={styles.qtyTableValue}>{selectedDonation.originalQuantity} {selectedDonation.unit}</Text>
+                        </View>
+                        {/* Row 2: Reserved Quantity */}
+                        <View style={styles.qtyTableRow}>
+                          <Text style={styles.qtyTableLabel}>Reserved Quantity</Text>
+                          <Text style={styles.qtyTableValue}>{selectedDonation.reservedQuantity} {selectedDonation.unit}</Text>
+                        </View>
+                        {/* Row 3: Available Quantity */}
+                        <View style={[styles.qtyTableRow, { borderBottomWidth: 0 }]}>
+                          <Text style={styles.qtyTableLabel}>Available Quantity</Text>
+                          {selectedDonation.availableQuantity === 0 ? (
+                            <Text style={styles.fullyReservedText}>Fully Reserved</Text>
+                          ) : (
+                            <Text style={styles.availableHighlightText}>
+                              {selectedDonation.availableQuantity} {selectedDonation.unit}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
                     </View>
                   </View>
 
@@ -1174,5 +1218,101 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  qtyBreakdownBox: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginTop: 4,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+  qtyLineText: {
+    fontSize: 11.5,
+    color: "#475569",
+  },
+  qtyBold: {
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  availableBold: {
+    fontWeight: "700",
+    color: "#087A3D",
+  },
+  fullyReservedBadge: {
+    fontWeight: "800",
+    color: "#DC2626",
+  },
+  qtyTableContainer: {
+    marginTop: 8,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  qtyTableRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  qtyTableLabel: {
+    fontSize: 13,
+    color: "#475569",
+    fontWeight: "500",
+  },
+  qtyTableValue: {
+    fontSize: 13.5,
+    color: "#1E293B",
+    fontWeight: "700",
+  },
+  availableHighlightText: {
+    fontSize: 13.5,
+    color: "#087A3D",
+    fontWeight: "800",
+  },
+  fullyReservedText: {
+    fontSize: 13.5,
+    color: "#DC2626",
+    fontWeight: "800",
+  },
+  noImageCardPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 14,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  noImageCardText: {
+    fontSize: 10,
+    color: "#9CA3AF",
+    marginTop: 2,
+    fontWeight: "500",
+  },
+  detailsNoImagePlaceholder: {
+    width: "100%",
+    height: 180,
+    borderRadius: 16,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  detailsNoImageText: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 6,
+    fontWeight: "600",
   },
 });

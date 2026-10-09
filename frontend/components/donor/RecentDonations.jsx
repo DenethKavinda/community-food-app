@@ -5,7 +5,7 @@ import { getMyDonations } from "../../services/donorService";
 import API from "../../services/api";
 
 const getImageUrl = (url) => {
-  if (!url) return "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80";
+  if (!url) return null;
   if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("file:") || url.startsWith("data:")) {
     return url;
   }
@@ -22,16 +22,28 @@ export default function RecentDonations({ onSeeAllPress, onDonationPress }) {
     try {
       const res = await getMyDonations();
       if (res && res.success && res.donations) {
-        // Map backend donation record fields to DonationCard expected schema
-        const mapped = res.donations.slice(0, 3).map((item) => ({
-          id: String(item.id),
-          title: item.meal_name || "Food Donation",
-          quantity: item.quantity_unit ? `${item.quantity} ${item.quantity_unit}` : `${item.quantity}`,
-          location: item.location || "Location Not Set",
-          status: item.status || "Pending",
-          image: getImageUrl(item.image_url),
-          raw: item,
-        }));
+        const mapped = res.donations.slice(0, 3).map((item) => {
+          const origQty = item.original_quantity ?? (parseInt(item.quantity) || 0);
+          const resQty = item.reserved_quantity ?? 0;
+          const availQty = item.available_quantity ?? Math.max(0, origQty - resQty);
+          const unit = item.quantity_unit
+            ? item.quantity_unit.charAt(0).toUpperCase() + item.quantity_unit.slice(1)
+            : "Portions";
+
+          return {
+            id: String(item.id),
+            title: item.meal_name || "Food Donation",
+            quantity: `${origQty} ${unit}`,
+            originalQuantity: origQty,
+            reservedQuantity: resQty,
+            availableQuantity: availQty,
+            unit: unit,
+            location: item.location || "Location Not Set",
+            status: item.status || "Pending",
+            image: getImageUrl(item.image_url),
+            raw: item,
+          };
+        });
         setRecentList(mapped);
       } else {
         setRecentList([]);

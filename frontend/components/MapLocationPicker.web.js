@@ -8,7 +8,6 @@
 import React, { useEffect, useRef } from "react";
 
 const GREEN_MID = "#388e3c";
-const GREEN_LIGHT = "#e8f5e9";
 const TEXT_SECONDARY = "#777";
 const BORDER = "#e8e8e8";
 
@@ -107,6 +106,7 @@ export default function MapLocationPicker({
     try { L = require("leaflet"); } catch { return; }
 
     if (latitude !== null && longitude !== null) {
+      mapInstanceRef.current.setView([latitude, longitude], 15);
       if (markerRef.current) {
         markerRef.current.setLatLng([latitude, longitude]);
       } else {
@@ -138,7 +138,10 @@ export default function MapLocationPicker({
         fillOpacity: 1
       }).addTo(mapInstanceRef.current).bindPopup("Current Location");
     }
-  }, [currentLocation]);
+    if (latitude === null || longitude === null) {
+      mapInstanceRef.current.setView([currentLocation.latitude, currentLocation.longitude], 15);
+    }
+  }, [currentLocation, latitude, longitude]);
 
   return (
     <div style={styles.wrapper}>
