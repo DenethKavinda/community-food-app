@@ -17,6 +17,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import QuantityUnitSelector from "./QuantityUnitSelector";
 import LocationPickerModal from "./LocationPickerModal";
 import ExpiryPickerModal from "./ExpiryPickerModal";
+import FeedbackModal from "../common/FeedbackModal";
 import { updateDonation } from "../../services/donorService";
 
 export default function EditDonationModal({
@@ -40,6 +41,15 @@ export default function EditDonationModal({
 
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
   const [isExpiryModalVisible, setIsExpiryModalVisible] = useState(false);
+
+  // Pop Up Feedback Modal state
+  const [feedbackModal, setFeedbackModal] = useState({
+    visible: false,
+    type: "success",
+    title: "",
+    message: "",
+    onCloseAction: null,
+  });
 
   useEffect(() => {
     if (donation) {
@@ -121,15 +131,35 @@ export default function EditDonationModal({
       });
 
       if (res && res.success) {
-        Alert.alert("Success", "Donation updated successfully!");
-        if (onDonationUpdated) onDonationUpdated(res.donation);
-        onClose();
+        const updatedObj = res.donation;
+        setFeedbackModal({
+          visible: true,
+          type: "success",
+          title: "Donation Updated",
+          message: res.message || "Donation details updated successfully!",
+          onCloseAction: () => {
+            if (onDonationUpdated) onDonationUpdated(updatedObj);
+            onClose();
+          },
+        });
       } else {
-        Alert.alert("Update Error", res?.message || "Could not update donation.");
+        setFeedbackModal({
+          visible: true,
+          type: "error",
+          title: "Update Error",
+          message: res?.message || "Could not update donation.",
+          onCloseAction: null,
+        });
       }
     } catch (err) {
       console.warn("Update donation failed:", err.message);
-      Alert.alert("Update Error", err.response?.data?.message || err.message || "Could not update donation.");
+      setFeedbackModal({
+        visible: true,
+        type: "error",
+        title: "Update Error",
+        message: err.response?.data?.message || err.message || "Could not update donation.",
+        onCloseAction: null,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -138,7 +168,8 @@ export default function EditDonationModal({
   if (!donation) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
+    <>
+      <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
           {/* Header */}
@@ -316,6 +347,20 @@ export default function EditDonationModal({
         </View>
       </View>
     </Modal>
+
+    {/* Success / Error Pop Up Modal */}
+    <FeedbackModal
+      visible={feedbackModal.visible}
+      type={feedbackModal.type}
+      title={feedbackModal.title}
+      message={feedbackModal.message}
+      onClose={() => {
+        const cb = feedbackModal.onCloseAction;
+        setFeedbackModal((prev) => ({ ...prev, visible: false }));
+        if (cb) cb();
+      }}
+    />
+    </>
   );
 }
 

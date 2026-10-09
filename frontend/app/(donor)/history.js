@@ -19,6 +19,7 @@ import API from "../../services/api";
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import EditDonationModal from "../../components/donor/EditDonationModal";
+import FeedbackModal from "../../components/common/FeedbackModal";
 import { getMyDonations, deleteDonation } from "../../services/donorService";
 import { AuthContext } from "../../context/AuthContext";
 
@@ -55,6 +56,14 @@ export default function DonationHistoryScreen() {
   // Delete Confirmation Modal state
   const [deletingDonation, setDeletingDonation] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Pop Up Feedback Modal State
+  const [feedbackModal, setFeedbackModal] = useState({
+    visible: false,
+    type: "success",
+    title: "",
+    message: "",
+  });
 
   const fetchDonations = useCallback(async () => {
     setLoading(true);
@@ -135,19 +144,27 @@ export default function DonationHistoryScreen() {
 
     setIsDeleting(true);
     try {
-      await deleteDonation(deletingDonation.id);
+      const res = await deleteDonation(deletingDonation.id);
       setDonations((prev) =>
         prev.filter((item) => item.id !== deletingDonation.id),
       );
       if (selectedDonation && selectedDonation.id === deletingDonation.id) {
         setSelectedDonation(null);
       }
+      setFeedbackModal({
+        visible: true,
+        type: "success",
+        title: "Donation Deleted",
+        message: res?.message || "Donation post deleted successfully.",
+      });
     } catch (err) {
       console.warn("Delete request error:", err.message);
-      Alert.alert(
-        "Delete Error",
-        err.response?.data?.message || "Could not delete donation.",
-      );
+      setFeedbackModal({
+        visible: true,
+        type: "error",
+        title: "Delete Error",
+        message: err.response?.data?.message || err.message || "Could not delete donation.",
+      });
     } finally {
       setIsDeleting(false);
       setDeletingDonation(null);
@@ -398,18 +415,24 @@ export default function DonationHistoryScreen() {
 
                     {/* Quantity Breakdown Box */}
                     <View style={styles.qtyBreakdownBox}>
-                      <Text style={styles.qtyLineText}>
-                        Original: <Text style={styles.qtyBold}>{item.originalQuantity} {item.unit}</Text>
-                        {"  •  "}Reserved: <Text style={styles.qtyBold}>{item.reservedQuantity} {item.unit}</Text>
-                      </Text>
-                      <Text style={[styles.qtyLineText, { marginTop: 2 }]}>
-                        Available:{" "}
+                      <View style={styles.qtyMetricsRow}>
+                        <View style={styles.qtyMetricChip}>
+                          <Text style={styles.qtyLabelText}>Original: </Text>
+                          <Text style={styles.qtyValText}>{item.originalQuantity} {item.unit}</Text>
+                        </View>
+                        <View style={styles.qtyMetricChip}>
+                          <Text style={styles.qtyLabelText}>Reserved: </Text>
+                          <Text style={styles.qtyValText}>{item.reservedQuantity} {item.unit}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.qtyAvailRow}>
+                        <Text style={styles.qtyAvailLabelText}>Available: </Text>
                         {item.availableQuantity === 0 ? (
                           <Text style={styles.fullyReservedBadge}>Fully Reserved</Text>
                         ) : (
-                          <Text style={styles.availableBold}>{item.availableQuantity} {item.unit}</Text>
+                          <Text style={styles.availableHighlightVal}>{item.availableQuantity} {item.unit}</Text>
                         )}
-                      </Text>
+                      </View>
                     </View>
 
                     <View style={styles.dateRow}>
@@ -728,6 +751,15 @@ export default function DonationHistoryScreen() {
         onClose={() => setEditingDonation(null)}
         donation={editingDonation}
         onDonationUpdated={() => fetchDonations()}
+      />
+
+      {/* Feedback Pop Up Modal */}
+      <FeedbackModal
+        visible={feedbackModal.visible}
+        type={feedbackModal.type}
+        title={feedbackModal.title}
+        message={feedbackModal.message}
+        onClose={() => setFeedbackModal((prev) => ({ ...prev, visible: false }))}
       />
     </SafeAreaView>
   );
@@ -1261,17 +1293,52 @@ const styles = StyleSheet.create({
   },
   qtyBreakdownBox: {
     backgroundColor: "#F8FAFC",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    marginTop: 4,
-    marginBottom: 4,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginTop: 6,
+    marginBottom: 6,
     borderWidth: 1,
-    borderColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
   },
-  qtyLineText: {
-    fontSize: 11.5,
+  qtyMetricsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    rowGap: 3,
+    columnGap: 12,
+    marginBottom: 4,
+  },
+  qtyMetricChip: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  qtyLabelText: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  qtyValText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  qtyAvailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: 5,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+  },
+  qtyAvailLabelText: {
+    fontSize: 12,
     color: "#475569",
+    fontWeight: "600",
+  },
+  availableHighlightVal: {
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#087A3D",
   },
   qtyBold: {
     fontWeight: "700",
