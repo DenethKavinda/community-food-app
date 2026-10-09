@@ -246,17 +246,8 @@ export default function DonationHistoryScreen() {
 
         <Text style={styles.subHeaderTitle}>My Donations</Text>
 
-        {user?.avatar_url ? (
-          <Image
-            source={{ uri: getImageUrl(user.avatar_url) }}
-            style={styles.avatar}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={styles.avatarPlaceholderHeader}>
-            <Ionicons name="person" size={18} color="#087A3D" />
-          </View>
-        )}
+        {/* Empty spacer to keep title centered after removing profile icon */}
+        <View style={{ width: 34 }} />
       </View>
 
       <View style={styles.mainContainer}>
