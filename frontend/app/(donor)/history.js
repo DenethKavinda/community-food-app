@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import API from "../../services/api";
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
+import EditDonationModal from "../../components/donor/EditDonationModal";
 import { getMyDonations, deleteDonation } from "../../services/donorService";
 import { AuthContext } from "../../context/AuthContext";
 
@@ -48,6 +49,9 @@ export default function DonationHistoryScreen() {
   // View Details Modal state
   const [selectedDonation, setSelectedDonation] = useState(null);
 
+  // Edit Modal state
+  const [editingDonation, setEditingDonation] = useState(null);
+
   // Delete Confirmation Modal state
   const [deletingDonation, setDeletingDonation] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -66,9 +70,15 @@ export default function DonationHistoryScreen() {
           const origQty = item.original_quantity ?? (parseInt(item.quantity) || 0);
           const resQty = item.reserved_quantity ?? 0;
           const availQty = item.available_quantity ?? Math.max(0, origQty - resQty);
-          const unit = item.quantity_unit
-            ? item.quantity_unit.charAt(0).toUpperCase() + item.quantity_unit.slice(1)
-            : "Portions";
+          const rawUnit = item.quantity_unit || "Items";
+          const unit =
+            rawUnit.toLowerCase() === "kg"
+              ? "Kg"
+              : rawUnit.toLowerCase() === "g"
+              ? "g"
+              : rawUnit.toLowerCase() === "ml"
+              ? "ml"
+              : rawUnit.charAt(0).toUpperCase() + rawUnit.slice(1);
 
           let formattedQty = `${origQty} ${unit}`;
 
@@ -429,17 +439,34 @@ export default function DonationHistoryScreen() {
                         />
                       </TouchableOpacity>
 
-                      <TouchableOpacity
-                        style={styles.deleteIconBtn}
-                        onPress={() => setDeletingDonation(item)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons
-                          name="trash-outline"
-                          size={16}
-                          color="#DC2626"
-                        />
-                      </TouchableOpacity>
+                      {item.status === "Pending" ? (
+                        <TouchableOpacity
+                          style={[
+                            styles.viewIconBtn,
+                            { backgroundColor: "#F0FDF4", borderColor: "#DCFCE7" },
+                          ]}
+                          onPress={() => setEditingDonation(item)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name="create-outline"
+                            size={16}
+                            color="#087A3D"
+                          />
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.deleteIconBtn}
+                          onPress={() => setDeletingDonation(item)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={16}
+                            color="#DC2626"
+                          />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -589,21 +616,46 @@ export default function DonationHistoryScreen() {
 
                 {/* Actions in View Modal */}
                 <View style={styles.modalActionButtonsRow}>
-                  <TouchableOpacity
-                    style={styles.deleteModalBtn}
-                    onPress={() => setDeletingDonation(selectedDonation)}
-                    activeOpacity={0.85}
-                  >
-                    <Ionicons
-                      name="trash-outline"
-                      size={18}
-                      color="#DC2626"
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text style={styles.deleteModalBtnText}>
-                      Delete Donation
-                    </Text>
-                  </TouchableOpacity>
+                  {selectedDonation.status === "Pending" ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.deleteModalBtn,
+                        { backgroundColor: "#F0FDF4", borderColor: "#DCFCE7" },
+                      ]}
+                      onPress={() => {
+                        const target = selectedDonation;
+                        setSelectedDonation(null);
+                        setEditingDonation(target);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name="create-outline"
+                        size={18}
+                        color="#087A3D"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={[styles.deleteModalBtnText, { color: "#087A3D" }]}>
+                        Edit Donation
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.deleteModalBtn}
+                      onPress={() => setDeletingDonation(selectedDonation)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color="#DC2626"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={styles.deleteModalBtnText}>
+                        Delete Donation
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity
                     style={styles.closeModalPrimaryBtn}
@@ -669,6 +721,14 @@ export default function DonationHistoryScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Donation Modal */}
+      <EditDonationModal
+        visible={!!editingDonation}
+        onClose={() => setEditingDonation(null)}
+        donation={editingDonation}
+        onDonationUpdated={() => fetchDonations()}
+      />
     </SafeAreaView>
   );
 }

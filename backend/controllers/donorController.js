@@ -65,7 +65,7 @@ exports.createDonation = async (req, res) => {
     });
   }
 
-  const finalQuantityUnit = quantity_unit ? quantity_unit.trim().toLowerCase() : "portions";
+  const finalQuantityUnit = quantity_unit ? quantity_unit.trim().toLowerCase() : "items";
 
   // If food_item_id is provided, try to fetch the item's name if meal_name is empty
   if (validFoodItemId && !finalMealName) {
@@ -146,6 +146,23 @@ exports.createDonation = async (req, res) => {
             `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_url, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
             [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl]
+          );
+        }
+      } else if (dbErr.errno === 1054 || dbErr.code === "ER_BAD_FIELD_ERROR") {
+        try {
+          await pool.query("ALTER TABLE donations ADD COLUMN quantity_unit VARCHAR(50) DEFAULT 'items'");
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl, statusToUse]
+          );
+        } catch (alterErr) {
+          console.warn("Could not add quantity_unit column, falling back without column:", alterErr.message);
+          const combinedQty = `${numericQty} ${finalQuantityUnit}`;
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, latitude, longitude, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+            [donor_id, validFoodItemId, finalMealName, combinedQty, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl]
           );
         }
       } else {
@@ -400,6 +417,107 @@ exports.updateDonationStatus = async (req, res) => {
     res.json({ message: `Donation status updated to ${status}` });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// 4.5. UPDATE DONATION DETAILS (Donor Only)
+exports.updateDonation = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const { id } = req.params;
+  const donor_id = req.user.id;
+  const { meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_base64, image_url } = req.body;
+
+  try {
+    const [existing] = await pool.query(
+      "SELECT * FROM donations WHERE id = ? AND donor_id = ?",
+      [id, donor_id]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: "Donation post not found or access denied." });
+    }
+
+    const current = existing[0];
+
+    let finalMealName = meal_name ? meal_name.trim() : current.meal_name;
+    let numericQty = quantity !== undefined && quantity !== null && String(quantity).trim() !== "" ? parseFloat(quantity) : parseFloat(current.quantity);
+    if (isNaN(numericQty) || numericQty <= 0) {
+      return res.status(400).json({ success: false, message: "Quantity must be a number greater than 0." });
+    }
+
+    let finalUnit = quantity_unit ? quantity_unit.trim().toLowerCase() : (current.quantity_unit || "items");
+    let finalLocation = location ? location.trim() : current.location;
+    let finalExpiry = expiry_window ? expiry_window.trim() : current.expiry_window;
+    let finalNotes = notes !== undefined ? notes.trim() : current.notes;
+    let parsedLat = latitude !== undefined && latitude !== null && !isNaN(Number(latitude)) ? parseFloat(latitude) : current.latitude;
+    let parsedLng = longitude !== undefined && longitude !== null && !isNaN(Number(longitude)) ? parseFloat(longitude) : current.longitude;
+
+    let savedImageUrl = current.image_url;
+    if (image_url !== undefined) {
+      savedImageUrl = image_url;
+    } else if (image_base64) {
+      try {
+        const matches = image_base64.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+        let ext = "jpg";
+        let base64Data = image_base64;
+        if (matches && matches.length === 3) {
+          ext = matches[1];
+          base64Data = matches[2];
+        }
+        const fileName = `donation-${Date.now()}-${Math.floor(Math.random() * 1000)}.${ext}`;
+        const filePath = path.join(uploadsDir, fileName);
+        fs.writeFileSync(filePath, Buffer.from(base64Data, "base64"));
+        savedImageUrl = `/uploads/donations/${fileName}`;
+      } catch (e) {
+        console.warn("Base64 save error during update:", e.message);
+      }
+    }
+
+    try {
+      await pool.query(
+        `UPDATE donations 
+         SET meal_name = ?, quantity = ?, quantity_unit = ?, location = ?, latitude = ?, longitude = ?, expiry_window = ?, notes = ?, image_url = ?
+         WHERE id = ? AND donor_id = ?`,
+        [finalMealName, String(numericQty), finalUnit, finalLocation, parsedLat, parsedLng, finalExpiry, finalNotes || null, savedImageUrl, id, donor_id]
+      );
+    } catch (dbErr) {
+      if (dbErr.errno === 1054 || dbErr.code === "ER_BAD_FIELD_ERROR") {
+        console.warn("quantity_unit column missing in donations table, attempting ALTER TABLE...");
+        try {
+          await pool.query("ALTER TABLE donations ADD COLUMN quantity_unit VARCHAR(50) DEFAULT 'items'");
+          await pool.query(
+            `UPDATE donations 
+             SET meal_name = ?, quantity = ?, quantity_unit = ?, location = ?, latitude = ?, longitude = ?, expiry_window = ?, notes = ?, image_url = ?
+             WHERE id = ? AND donor_id = ?`,
+            [finalMealName, String(numericQty), finalUnit, finalLocation, parsedLat, parsedLng, finalExpiry, finalNotes || null, savedImageUrl, id, donor_id]
+          );
+        } catch (alterErr) {
+          console.warn("Could not add quantity_unit column, updating without it:", alterErr.message);
+          await pool.query(
+            `UPDATE donations 
+             SET meal_name = ?, quantity = ?, location = ?, latitude = ?, longitude = ?, expiry_window = ?, notes = ?, image_url = ?
+             WHERE id = ? AND donor_id = ?`,
+            [finalMealName, String(numericQty), finalLocation, parsedLat, parsedLng, finalExpiry, finalNotes || null, savedImageUrl, id, donor_id]
+          );
+        }
+      } else {
+        throw dbErr;
+      }
+    }
+
+    const [updated] = await pool.query("SELECT * FROM donations WHERE id = ?", [id]);
+
+    res.json({
+      success: true,
+      message: "Donation updated successfully.",
+      donation: updated[0],
+    });
+  } catch (error) {
+    console.error("updateDonation error:", error);
+    res.status(500).json({ success: false, message: "Server error updating donation", error: error.message });
   }
 };
 

@@ -12,6 +12,7 @@ router.patch("/notifications/:id/read", authMiddleware, donorController.markAsRe
 router.get("/my-donations", authMiddleware, donorController.getDonorDonations);
 router.get("/available", authMiddleware, donorController.getAvailableDonations);
 router.get("/:id", authMiddleware, donorController.getDonationById);
+router.put("/:id", authMiddleware, donorController.updateDonation);
 router.patch("/:id/status", authMiddleware, donorController.updateDonationStatus);
 router.delete("/:id", authMiddleware, donorController.deleteDonation);
 

@@ -28,6 +28,12 @@ export const updateDonationStatus = async (id, status) => {
   return response.data;
 };
 
+// Update donation details
+export const updateDonation = async (id, donationData) => {
+  const response = await API.put(`/donations/${id}`, donationData);
+  return response.data;
+};
+
 // Delete a donation post by ID
 export const deleteDonation = async (id) => {
   const response = await API.delete(`/donations/${id}`);

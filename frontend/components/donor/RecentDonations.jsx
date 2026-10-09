@@ -26,9 +26,15 @@ export default function RecentDonations({ onSeeAllPress, onDonationPress }) {
           const origQty = item.original_quantity ?? (parseInt(item.quantity) || 0);
           const resQty = item.reserved_quantity ?? 0;
           const availQty = item.available_quantity ?? Math.max(0, origQty - resQty);
-          const unit = item.quantity_unit
-            ? item.quantity_unit.charAt(0).toUpperCase() + item.quantity_unit.slice(1)
-            : "Portions";
+          const rawUnit = item.quantity_unit || "Items";
+          const unit =
+            rawUnit.toLowerCase() === "kg"
+              ? "Kg"
+              : rawUnit.toLowerCase() === "g"
+              ? "g"
+              : rawUnit.toLowerCase() === "ml"
+              ? "ml"
+              : rawUnit.charAt(0).toUpperCase() + rawUnit.slice(1);
 
           return {
             id: String(item.id),
