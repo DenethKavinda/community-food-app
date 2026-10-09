@@ -17,7 +17,7 @@ export default function DonationSuccess({
   mealName = "Fresh Food Donation",
   quantity = "10 portions",
   expiryWindow = "Today, 05:00 PM",
-  image = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=300&q=80",
+  image = null,
   onBackToDashboard,
   onViewDonation,
 }) {
@@ -111,7 +111,14 @@ export default function DonationSuccess({
 
           {/* Item Summary Card */}
           <View style={styles.summaryCard}>
-            <Image source={{ uri: image }} style={styles.foodImage} resizeMode="cover" />
+            {image ? (
+              <Image source={{ uri: image }} style={styles.foodImage} resizeMode="cover" />
+            ) : (
+              <View style={styles.noImagePlaceholder}>
+                <Ionicons name="camera-outline" size={20} color="#9CA3AF" />
+                <Text style={styles.noImageText}>No Image</Text>
+              </View>
+            )}
             <View style={styles.summaryTextContainer}>
               <Text style={styles.tagText}>SURPLUS RESCUE</Text>
               <Text style={styles.foodTitle} numberOfLines={1}>
@@ -388,5 +395,21 @@ const styles = StyleSheet.create({
     color: "#111827",
     fontSize: 15,
     fontWeight: "700",
+  },
+  noImagePlaceholder: {
+    width: 58,
+    height: 58,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  noImageText: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    marginTop: 2,
+    fontWeight: "500",
   },
 });

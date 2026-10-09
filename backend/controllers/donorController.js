@@ -94,9 +94,9 @@ exports.createDonation = async (req, res) => {
       }
     }
 
-    // Default image if none provided
+    // If no image provided, keep savedImageUrl as null
     if (!savedImageUrl) {
-      savedImageUrl = "https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80";
+      savedImageUrl = null;
     }
 
     let result;
@@ -273,10 +273,42 @@ exports.getDonorDonations = async (req, res) => {
       }
     }
 
+    // Aggregate reserved portions across recipient requests & food bank claims
+    const [requests] = await pool.query(
+      "SELECT donation_id, SUM(requested_portions) as reserved FROM requests WHERE status IN ('Pending', 'Approved') GROUP BY donation_id"
+    );
+    const [foodBankClaims] = await pool.query(
+      `SELECT donation_id, SUM(requested_portions) AS reserved
+       FROM food_bank_claims
+       WHERE status NOT IN ('Cancelled', 'Rejected')
+       GROUP BY donation_id`
+    );
+
+    const reservedMap = {};
+    requests.forEach((r) => {
+      reservedMap[r.donation_id] = parseInt(r.reserved) || 0;
+    });
+    foodBankClaims.forEach((r) => {
+      reservedMap[r.donation_id] = (reservedMap[r.donation_id] || 0) + (parseInt(r.reserved) || 0);
+    });
+
+    const enrichedDonations = donations.map((d) => {
+      const origQty = parseInt(d.quantity) || 0;
+      const resQty = reservedMap[d.id] || 0;
+      const availQty = Math.max(0, origQty - resQty);
+
+      return {
+        ...d,
+        original_quantity: origQty,
+        reserved_quantity: resQty,
+        available_quantity: availQty,
+      };
+    });
+
     res.json({
       success: true,
-      count: donations.length,
-      donations,
+      count: enrichedDonations.length,
+      donations: enrichedDonations,
     });
   } catch (error) {
     console.error("Get donations error:", error);
@@ -302,6 +334,25 @@ exports.getDonationById = async (req, res) => {
         await pool.query("UPDATE donations SET status = 'Expired' WHERE id = ?", [d.id]);
       } catch (e) {}
     }
+
+    const [requests] = await pool.query(
+      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status IN ('Pending', 'Approved')",
+      [d.id]
+    );
+    const [foodBankClaims] = await pool.query(
+      "SELECT SUM(requested_portions) as reserved FROM food_bank_claims WHERE donation_id = ? AND status NOT IN ('Cancelled', 'Rejected')",
+      [d.id]
+    );
+
+    const reqReserved = parseInt(requests[0]?.reserved) || 0;
+    const claimReserved = parseInt(foodBankClaims[0]?.reserved) || 0;
+    const totalReserved = reqReserved + claimReserved;
+    const origQty = parseInt(d.quantity) || 0;
+    const availQty = Math.max(0, origQty - totalReserved);
+
+    d.original_quantity = origQty;
+    d.reserved_quantity = totalReserved;
+    d.available_quantity = availQty;
 
     res.json({ success: true, donation: d });
   } catch (error) {

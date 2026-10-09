@@ -29,6 +29,14 @@ export default function ExpiryPickerModal({
   const [selectedDay, setSelectedDay] = useState("Today");
   const [selectedTime, setSelectedTime] = useState("05:00 PM");
 
+  React.useEffect(() => {
+    if (visible && currentValue && currentValue.includes(",")) {
+      const parts = currentValue.split(",");
+      if (parts[0] && parts[0].trim()) setSelectedDay(parts[0].trim());
+      if (parts[1] && parts[1].trim()) setSelectedTime(parts[1].trim());
+    }
+  }, [visible, currentValue]);
+
   const handleConfirm = () => {
     const finalVal = `${selectedDay}, ${selectedTime}`;
     onSelectExpiry(finalVal);
