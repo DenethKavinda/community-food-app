@@ -542,3 +542,81 @@ exports.getDonorStats = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error fetching stats", error: error.message });
   }
 };
+
+// 8. GET DONOR NOTIFICATIONS (Strictly Authenticated User ID)
+exports.getNotifications = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const donorId = req.user.id;
+
+  try {
+    // Run automated expiration check
+    const { checkAndNotifyExpiredDonations } = require("../services/donorNotificationService");
+    await checkAndNotifyExpiredDonations();
+
+    const [notifications] = await pool.query(
+      "SELECT * FROM notifications WHERE recipient_id = ? ORDER BY created_at DESC LIMIT 100",
+      [donorId]
+    );
+
+    const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+    res.json({
+      success: true,
+      unreadCount,
+      notifications,
+    });
+  } catch (error) {
+    console.error("getNotifications error:", error);
+    res.status(500).json({ success: false, message: "Server error fetching notifications", error: error.message });
+  }
+};
+
+// 9. MARK SINGLE NOTIFICATION AS READ
+exports.markAsRead = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const donorId = req.user.id;
+  const notificationId = req.params.id;
+
+  try {
+    const [result] = await pool.query(
+      "UPDATE notifications SET is_read = TRUE WHERE id = ? AND recipient_id = ?",
+      [notificationId, donorId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Notification not found or access denied." });
+    }
+
+    res.json({ success: true, message: "Notification marked as read." });
+  } catch (error) {
+    console.error("markAsRead error:", error);
+    res.status(500).json({ success: false, message: "Server error updating notification", error: error.message });
+  }
+};
+
+// 10. MARK ALL NOTIFICATIONS AS READ
+exports.markAllAsRead = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const donorId = req.user.id;
+
+  try {
+    await pool.query(
+      "UPDATE notifications SET is_read = TRUE WHERE recipient_id = ?",
+      [donorId]
+    );
+
+    res.json({ success: true, message: "All notifications marked as read." });
+  } catch (error) {
+    console.error("markAllAsRead error:", error);
+    res.status(500).json({ success: false, message: "Server error updating notifications", error: error.message });
+  }
+};

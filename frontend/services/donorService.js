@@ -45,3 +45,21 @@ export const updateProfile = async (profileData) => {
   const response = await API.put("/auth/profile", profileData);
   return response.data;
 };
+
+// Fetch donor notifications
+export const getDonorNotifications = async () => {
+  const response = await API.get("/donations/notifications");
+  return response.data;
+};
+
+// Mark a donor notification as read
+export const markDonorNotificationRead = async (id) => {
+  const response = await API.patch(`/donations/notifications/${id}/read`);
+  return response.data;
+};
+
+// Mark all donor notifications as read
+export const markAllDonorNotificationsRead = async () => {
+  const response = await API.patch("/donations/notifications/read-all");
+  return response.data;
+};
