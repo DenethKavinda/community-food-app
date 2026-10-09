@@ -301,3 +301,82 @@ exports.updateProfile = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error updating profile", error: error.message });
   }
 };
+
+// CHANGE PASSWORD FOR LOGGED-IN USER
+exports.changePassword = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "Please enter both your current password and new password.",
+    });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: "New password must be at least 6 characters long.",
+    });
+  }
+
+  if (confirmPassword && newPassword !== confirmPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "New password and confirmation password do not match.",
+    });
+  }
+
+  try {
+    const [users] = await pool.query("SELECT id, password FROM users WHERE id = ?", [
+      req.user.id,
+    ]);
+
+    if (users.length === 0) {
+      return res.status(404).json({ success: false, message: "User account not found." });
+    }
+
+    const user = users[0];
+
+    let isMatch = false;
+    if (user.password) {
+      if (user.password.startsWith("$2a$") || user.password.startsWith("$2b$") || user.password.startsWith("$2y$")) {
+        isMatch = await bcrypt.compare(currentPassword, user.password);
+      } else {
+        isMatch = currentPassword === user.password;
+      }
+    }
+
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is incorrect.",
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await pool.query("UPDATE users SET password = ? WHERE id = ?", [
+      hashedPassword,
+      req.user.id,
+    ]);
+
+    res.json({
+      success: true,
+      message: "Password changed successfully.",
+    });
+  } catch (error) {
+    console.error("changePassword error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating password.",
+      error: error.message,
+    });
+  }
+};
+

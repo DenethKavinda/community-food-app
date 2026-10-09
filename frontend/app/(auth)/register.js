@@ -48,7 +48,9 @@ const COLORS = {
   danger: "#fca5a5",
 };
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_RE = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i;
+const SRI_LANKAN_NIC_RE = /^(?:\d{9}[VXF]|\d{12})$/i;
+const SRI_LANKAN_MOBILE_RE = /^(?:07\d{8}|\+947\d{8})$/;
 
 /* -------------------------------------------------------------------------- */
 /*  Animation Helpers & Background                                            */
@@ -595,13 +597,20 @@ export default function Register() {
 
     const trimmedEmail = email.trim();
     const trimmedName = name.trim();
-    const trimmedNic = nic.trim();
+    const trimmedNic = nic.trim().toUpperCase();
+    const trimmedPhone = phone.trim();
 
     if (!trimmedName || !trimmedNic || !trimmedEmail || !password) {
       return fail("Please fill in all required fields marked with *");
     }
     if (!EMAIL_RE.test(trimmedEmail)) {
       return fail("That email address isn't valid. Check it and try again.");
+    }
+    if (!SRI_LANKAN_NIC_RE.test(trimmedNic)) {
+      return fail("Enter a valid Sri Lankan NIC (9 digits followed by V/X, or 12 digits).");
+    }
+    if (trimmedPhone && !SRI_LANKAN_MOBILE_RE.test(trimmedPhone)) {
+      return fail("Enter a valid Sri Lankan mobile number (07XXXXXXXX or +947XXXXXXXX).");
     }
 
     setError("");
@@ -613,7 +622,7 @@ export default function Register() {
         email: trimmedEmail,
         password,
         role,
-        phone,
+        phone: trimmedPhone,
         address,
         business_name: businessName,
         organization_name: orgName,
@@ -760,10 +769,10 @@ export default function Register() {
                 placeholder="NIC Number *"
                 value={nic}
                 onChangeText={(v) => {
-                  setNic(v);
+                  setNic(v.toUpperCase());
                   if (error) setError("");
                 }}
-                hasError={!!error && !nic.trim()}
+                hasError={!!error && (!nic.trim() || !SRI_LANKAN_NIC_RE.test(nic.trim()))}
                 autoCapitalize="characters"
                 returnKeyType="next"
                 blurOnSubmit={false}
@@ -834,7 +843,11 @@ export default function Register() {
                 icon="call-outline"
                 placeholder="Phone Number"
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(v) => {
+                  setPhone(v);
+                  if (error) setError("");
+                }}
+                hasError={!!error && !!phone.trim() && !SRI_LANKAN_MOBILE_RE.test(phone.trim())}
                 keyboardType="phone-pad"
                 returnKeyType="next"
                 blurOnSubmit={false}

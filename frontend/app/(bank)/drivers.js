@@ -6,15 +6,7 @@ import * as Location from "expo-location";
 import { AuthContext } from "../../context/AuthContext";
 import { createFoodBankClaim } from "../../services/recipientService";
 import { getImageUrl } from "../../services/api";
-
-let MapView = null;
-let Marker = null;
-
-if (Platform.OS !== "web") {
-  const Maps = require("react-native-maps");
-  MapView = Maps.default;
-  Marker = Maps.Marker;
-}
+import MapLocationPicker from "../../components/MapLocationPicker";
 
 export default function DriversScreen() {
   const router = useRouter();
@@ -25,6 +17,13 @@ export default function DriversScreen() {
   const [method, setMethod] = useState("Volunteer Driver Delivery");
   const [location, setLocation] = useState(donation.location || "");
   const [coordinates, setCoordinates] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [mapRegion, setMapRegion] = useState({
+    latitude: 6.9271,
+    longitude: 79.8612,
+    latitudeDelta: 0.1,
+    longitudeDelta: 0.1,
+  });
   const [searchLocation, setSearchLocation] = useState("");
   const [mapLoading, setMapLoading] = useState(false);
   const [notes, setNotes] = useState("");
@@ -55,22 +54,20 @@ export default function DriversScreen() {
   const updateLocationFromCoordinates = async (latitude, longitude) => {
     const requestId = ++locationRequestRef.current;
     setCoordinates({ latitude, longitude });
-    if (Platform.OS === "web") {
-      setLocation(`Current location (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`);
-      return;
-    }
-
     try {
-      const addresses = await Location.reverseGeocodeAsync({ latitude, longitude });
-      const address = addresses[0];
-      const formatted = [address?.name, address?.street, address?.city, address?.region]
-        .filter(Boolean)
-        .join(", ");
-      if (formatted && requestId === locationRequestRef.current) {
-        setLocation(formatted);
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      const data = await response.json();
+      if (data?.display_name && requestId === locationRequestRef.current) {
+        setLocation(data.display_name.split(", ").slice(0, 5).join(", "));
       }
     } catch (error) {
-      console.warn("Could not resolve map location:", error.message);
+      console.warn("Could not resolve pickup location:", error.message);
+      if (requestId === locationRequestRef.current) {
+        setLocation(`Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`);
+      }
     }
   };
 
@@ -85,8 +82,14 @@ export default function DriversScreen() {
 
         navigator.geolocation.getCurrentPosition(
           ({ coords }) => {
-            updateLocationFromCoordinates(coords.latitude, coords.longitude);
-            setMapLoading(false);
+          setCurrentLocation({ latitude: coords.latitude, longitude: coords.longitude });
+          setMapRegion((previous) => ({
+            ...previous,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+          }));
+          updateLocationFromCoordinates(coords.latitude, coords.longitude);
+          setMapLoading(false);
           },
           () => {
             Alert.alert(
@@ -108,8 +111,18 @@ export default function DriversScreen() {
       const current = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
       });
+      setCurrentLocation({
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+      });
+      setMapRegion((previous) => ({
+        ...previous,
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+      }));
       await updateLocationFromCoordinates(current.coords.latitude, current.coords.longitude);
-    } catch (_error) {
+    } catch (error) {
+      console.warn("Current pickup location error:", error.message);
       Alert.alert("Location unavailable", "We could not get your current location.");
     } finally {
       setMapLoading(false);
@@ -118,23 +131,23 @@ export default function DriversScreen() {
 
   const searchMapLocation = async () => {
     if (!searchLocation.trim()) return;
-    if (Platform.OS === "web") {
-      Alert.alert(
-        "Search unavailable on web",
-        "Use the current location button or open the app on a mobile device to search and pin a place."
-      );
-      return;
-    }
-
     setMapLoading(true);
     try {
-      const results = await Location.geocodeAsync(searchLocation.trim());
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchLocation.trim())}`,
+        { headers: { "Accept-Language": "en" } }
+      );
+      const results = await response.json();
       if (!results.length) {
         Alert.alert("Location not found", "Try a nearby address, city, or landmark.");
         return;
       }
-      await updateLocationFromCoordinates(results[0].latitude, results[0].longitude);
-    } catch (_error) {
+      const latitude = Number(results[0].lat);
+      const longitude = Number(results[0].lon);
+      await updateLocationFromCoordinates(latitude, longitude);
+      setMapRegion((previous) => ({ ...previous, latitude, longitude }));
+    } catch (error) {
+      console.warn("Pickup location search error:", error.message);
       Alert.alert("Search failed", "We could not find that location.");
     } finally {
       setMapLoading(false);
@@ -225,7 +238,7 @@ export default function DriversScreen() {
           value={searchLocation}
           onChangeText={setSearchLocation}
           onSubmitEditing={searchMapLocation}
-          placeholder="Search on Google Maps"
+          placeholder="Search address or place"
           returnKeyType="search"
         />
         <TouchableOpacity style={styles.searchButton} onPress={searchMapLocation}>
@@ -233,27 +246,13 @@ export default function DriversScreen() {
         </TouchableOpacity>
       </View>
       <View style={styles.mapCard}>
-        {MapView ? (
-          <MapView
-            provider={Platform.OS === "android" ? "google" : undefined}
-            style={styles.map}
-            initialRegion={{ latitude: 6.9271, longitude: 79.8612, latitudeDelta: 0.08, longitudeDelta: 0.08 }}
-            region={coordinates ? { ...coordinates, latitudeDelta: 0.02, longitudeDelta: 0.02 } : undefined}
-            onPress={(event) =>
-              updateLocationFromCoordinates(
-                event.nativeEvent.coordinate.latitude,
-                event.nativeEvent.coordinate.longitude
-              )
-            }
-          >
-            {coordinates && <Marker coordinate={coordinates} title="Pickup location" />}
-          </MapView>
-        ) : (
-          <View style={styles.webMapFallback}>
-            <Ionicons name="map-outline" size={28} color="#16a34a" />
-            <Text style={styles.webMapText}>Use search or current location to choose a pickup point.</Text>
-          </View>
-        )}
+        <MapLocationPicker
+          latitude={coordinates?.latitude ?? null}
+          longitude={coordinates?.longitude ?? null}
+          currentLocation={currentLocation}
+          initialRegion={mapRegion}
+          onLocationSelect={updateLocationFromCoordinates}
+        />
         {mapLoading && (
           <View style={styles.mapLoading}>
             <ActivityIndicator color="#16a34a" />
@@ -314,10 +313,7 @@ const styles = StyleSheet.create({
   searchRow: { flexDirection: "row", gap: 8 },
   searchInput: { flex: 1, borderWidth: 1, borderColor: "#dbe3ed", borderRadius: 12, backgroundColor: "#ffffff", paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: "#172033" },
   searchButton: { width: 48, borderRadius: 12, backgroundColor: "#16a34a", alignItems: "center", justifyContent: "center" },
-  mapCard: { height: 230, marginTop: 10, overflow: "hidden", borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ed" },
-  map: { flex: 1 },
-  webMapFallback: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: "#ecfdf5" },
-  webMapText: { marginTop: 8, textAlign: "center", color: "#166534", fontSize: 13, lineHeight: 19 },
+  mapCard: { marginTop: 10, overflow: "hidden", borderRadius: 14, borderWidth: 1, borderColor: "#dbe3ed", backgroundColor: "#ffffff" },
   mapLoading: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.45)" },
   currentLocationButton: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingVertical: 10 },
   currentLocationText: { color: "#16a34a", fontWeight: "700", fontSize: 13 },

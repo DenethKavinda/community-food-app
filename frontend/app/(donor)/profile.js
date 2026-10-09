@@ -8,6 +8,9 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Platform,
+  Modal,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -41,6 +44,17 @@ export default function DonorProfileScreen() {
   });
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
+  // Change Password Modal state
+  const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+
   useEffect(() => {
     loadDonorStats();
   }, []);
@@ -59,21 +73,96 @@ export default function DonorProfileScreen() {
     }
   };
 
+  const openPasswordModal = () => {
+    setPasswordError("");
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setIsPasswordModalVisible(true);
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError("");
+
+    if (!currentPassword) {
+      setPasswordError("Please enter your current password.");
+      return;
+    }
+    if (!newPassword) {
+      setPasswordError("Please enter a new password.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New password and confirm password do not match.");
+      return;
+    }
+
+    try {
+      setIsSubmittingPassword(true);
+      const res = await API.put("/auth/change-password", {
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+
+      if (res.data && res.data.success) {
+        setIsPasswordModalVisible(false);
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setPasswordError("");
+
+        if (Platform.OS === "web") {
+          window.alert("Password updated successfully!");
+        } else {
+          Alert.alert("Success", "Your password has been changed successfully.");
+        }
+      } else {
+        setPasswordError(res.data?.message || "Failed to update password.");
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || "Failed to change password. Please check your current password.";
+      console.warn("Change password info:", msg);
+      setPasswordError(msg);
+    } finally {
+      setIsSubmittingPassword(false);
+    }
+  };
+
   const handleLogout = () => {
-    Alert.alert("Log Out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log Out",
-        style: "destructive",
-        onPress: () => {
-          if (logout) {
-            logout();
-          } else {
-            router.push("/(auth)/login");
-          }
+    const doLogout = () => {
+      if (logout) {
+        logout();
+      } else {
+        router.replace("/(auth)/login");
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm) {
+        if (window.confirm("Are you sure you want to log out?")) {
+          doLogout();
+        }
+      } else {
+        doLogout();
+      }
+    } else {
+      Alert.alert("Log Out", "Are you sure you want to log out?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Log Out",
+          style: "destructive",
+          onPress: doLogout,
         },
-      },
-    ]);
+      ]);
+    }
   };
 
   return (
@@ -95,7 +184,7 @@ export default function DonorProfileScreen() {
 
         <TouchableOpacity
           style={styles.settingsBtn}
-          onPress={() => Alert.alert("Settings", "Settings options coming soon.")}
+          onPress={openPasswordModal}
           activeOpacity={0.7}
         >
           <Ionicons name="settings-outline" size={22} color="#111827" />
@@ -265,7 +354,23 @@ export default function DonorProfileScreen() {
               <Feather name="chevron-right" size={16} color="#9CA3AF" />
             </TouchableOpacity>
 
-            {/* Menu Item 4: Food Safety & Guidelines */}
+            {/* Menu Item 4: Account Security & Change Password */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={openPasswordModal}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuIconBox}>
+                <Ionicons name="key-outline" size={20} color="#087A3D" />
+              </View>
+              <View style={styles.menuTextContainer}>
+                <Text style={styles.menuTitle}>Security & Password</Text>
+                <Text style={styles.menuSubtitle}>Change account login password</Text>
+              </View>
+              <Feather name="chevron-right" size={16} color="#9CA3AF" />
+            </TouchableOpacity>
+
+            {/* Menu Item 5: Food Safety & Guidelines */}
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => router.push("/(donor)/guidelines")}
@@ -281,7 +386,7 @@ export default function DonorProfileScreen() {
               <Feather name="chevron-right" size={16} color="#9CA3AF" />
             </TouchableOpacity>
 
-            {/* Menu Item 5: Help & Support */}
+            {/* Menu Item 6: Help & Support */}
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => Alert.alert("Help & Support", "Volunteer helpline & FAQs.")}
@@ -317,6 +422,145 @@ export default function DonorProfileScreen() {
         {/* Fixed Bottom Navigation Bar with "Profile" active */}
         <DonorBottomNav initialTab="Profile" />
       </View>
+
+      {/* Change Password Modal */}
+      <Modal
+        visible={isPasswordModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsPasswordModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <View style={styles.modalHeaderIcon}>
+                  <Ionicons name="key-outline" size={20} color="#087A3D" />
+                </View>
+                <Text style={styles.modalTitle}>Change Password</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setIsPasswordModalVisible(false)}
+                style={styles.closeBtn}
+              >
+                <Ionicons name="close" size={22} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              <Text style={styles.modalSubtitle}>
+                Update your password to keep your donor account secure.
+              </Text>
+
+              {passwordError ? (
+                <View style={styles.errorContainer}>
+                  <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+                  <Text style={styles.errorText}>{passwordError}</Text>
+                </View>
+              ) : null}
+
+              {/* Current Password Field */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Current Password</Text>
+                <View style={styles.passwordInputContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    secureTextEntry={!showCurrentPassword}
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                    placeholder="Enter current password"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowCurrentPassword(!showCurrentPassword)}
+                    style={styles.eyeIcon}
+                  >
+                    <Ionicons
+                      name={showCurrentPassword ? "eye-off-outline" : "eye-outline"}
+                      size={20}
+                      color="#6B7280"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* New Password Field */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>New Password</Text>
+                <View style={styles.passwordInputContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    secureTextEntry={!showNewPassword}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    placeholder="Enter new password (min. 6 chars)"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowNewPassword(!showNewPassword)}
+                    style={styles.eyeIcon}
+                  >
+                    <Ionicons
+                      name={showNewPassword ? "eye-off-outline" : "eye-outline"}
+                      size={20}
+                      color="#6B7280"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Confirm New Password Field */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Confirm New Password</Text>
+                <View style={styles.passwordInputContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    secureTextEntry={!showConfirmPassword}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Re-enter new password"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                    style={styles.eyeIcon}
+                  >
+                    <Ionicons
+                      name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                      size={20}
+                      color="#6B7280"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Modal Buttons */}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setIsPasswordModalVisible(false)}
+                disabled={isSubmittingPassword}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleChangePassword}
+                disabled={isSubmittingPassword}
+              >
+                {isSubmittingPassword ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Update Password</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -640,5 +884,130 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 14,
     marginBottom: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    width: "100%",
+    maxWidth: 440,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  modalTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  modalHeaderIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#DCFCE7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  closeBtn: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+  },
+  errorText: {
+    fontSize: 12.5,
+    color: "#DC2626",
+    flex: 1,
+    fontWeight: "500",
+  },
+  inputGroup: {
+    marginBottom: 14,
+  },
+  inputLabel: {
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 6,
+  },
+  passwordInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+    paddingHorizontal: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    height: 44,
+    fontSize: 14,
+    color: "#111827",
+  },
+  eyeIcon: {
+    padding: 6,
+  },
+  modalFooter: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#4B5563",
+  },
+  saveBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "#087A3D",
+    alignItems: "center",
+  },
+  saveBtnText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 });

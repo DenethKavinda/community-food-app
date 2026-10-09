@@ -37,6 +37,8 @@ export default function QuantityUnitSelector({
   unit,
   onChangeUnit,
   category,
+  quantityError = false,
+  unitError = false,
 }) {
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -64,13 +66,15 @@ export default function QuantityUnitSelector({
   return (
     <View style={styles.container}>
       <View style={styles.labelRow}>
-        <Text style={styles.label}>Quantity & Unit</Text>
+        <Text style={styles.label}>
+          Quantity & Unit <Text style={{ color: "#DC2626" }}>*</Text>
+        </Text>
         <Text style={styles.subLabel}>Numeric amount & measure</Text>
       </View>
 
       <View style={styles.inputRow}>
         {/* Numeric Quantity Input */}
-        <View style={styles.quantityInputWrapper}>
+        <View style={[styles.quantityInputWrapper, quantityError && styles.errorBorder]}>
           <MaterialCommunityIcons
             name="silverware-fork-knife"
             size={18}
@@ -99,6 +103,7 @@ export default function QuantityUnitSelector({
           style={[
             styles.unitDropdownTrigger,
             !currentUnitObj && styles.unitDropdownTriggerEmpty,
+            unitError && styles.errorBorder,
           ]}
           onPress={() => setModalVisible(true)}
           activeOpacity={0.8}
@@ -327,5 +332,8 @@ const styles = StyleSheet.create({
   unitItemTextSelected: {
     color: "#087A3D",
     fontWeight: "700",
+  },
+  errorBorder: {
+    borderColor: "#DC2626",
   },
 });

@@ -61,7 +61,14 @@ export default function DonationCard({ donation, onPress }) {
       onPress={onPress || (() => console.log(`Donation ${title} pressed`))}
       activeOpacity={0.8}
     >
-      <Image source={{ uri: image }} style={styles.image} resizeMode="cover" />
+      {image ? (
+        <Image source={{ uri: image }} style={styles.image} resizeMode="cover" />
+      ) : (
+        <View style={styles.noImagePlaceholder}>
+          <Ionicons name="camera-outline" size={18} color="#9CA3AF" />
+          <Text style={styles.noImageText}>No Image</Text>
+        </View>
+      )}
 
       <View style={styles.detailsContainer}>
         <Text style={styles.title} numberOfLines={1}>
@@ -70,7 +77,16 @@ export default function DonationCard({ donation, onPress }) {
 
         <View style={styles.infoRow}>
           <MaterialCommunityIcons name="silverware-fork-knife" size={13} color="#6B7280" style={styles.icon} />
-          <Text style={styles.infoText}>{quantity}</Text>
+          <Text style={styles.infoText}>
+            Orig: {donation.originalQuantity ?? quantity} • Res: {donation.reservedQuantity ?? 0}
+          </Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <Ionicons name="pie-chart-outline" size={13} color="#087A3D" style={styles.icon} />
+          <Text style={[styles.infoText, { fontWeight: "700", color: donation.availableQuantity === 0 ? "#DC2626" : "#087A3D" }]}>
+            Avail: {donation.availableQuantity === 0 ? "Fully Reserved" : `${donation.availableQuantity ?? quantity} ${donation.unit || ''}`}
+          </Text>
         </View>
 
         <View style={styles.infoRow}>
@@ -144,5 +160,21 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 11,
     fontWeight: "600",
+  },
+  noImagePlaceholder: {
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  noImageText: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    marginTop: 2,
+    fontWeight: "500",
   },
 });

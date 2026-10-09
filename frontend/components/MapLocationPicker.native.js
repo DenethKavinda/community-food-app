@@ -3,7 +3,7 @@
  * Used on iOS and Android via Expo's platform-specific file resolution.
  * Uses react-native-maps which is already installed in this project.
  */
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 
@@ -18,10 +18,24 @@ export default function MapLocationPicker({
   initialRegion,
   onLocationSelect,
 }) {
+  const mapRef = useRef(null);
   const handlePress = (e) => {
     const { latitude: lat, longitude: lng } = e.nativeEvent.coordinate;
     onLocationSelect(lat, lng);
   };
+
+  useEffect(() => {
+    const selectedLocation = latitude !== null && longitude !== null
+      ? { latitude, longitude }
+      : currentLocation;
+    if (selectedLocation) {
+      mapRef.current?.animateToRegion({
+        ...selectedLocation,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      });
+    }
+  }, [latitude, longitude, currentLocation]);
 
   return (
     <View>
@@ -30,6 +44,7 @@ export default function MapLocationPicker({
       </Text>
       <View style={styles.mapContainer}>
         <MapView
+          ref={mapRef}
           style={styles.map}
           initialRegion={initialRegion}
           showsUserLocation={!!currentLocation}
