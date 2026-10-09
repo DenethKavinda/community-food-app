@@ -1,28 +1,45 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 
 export default function DriverBottomNav({
   activeTab = "Home",
   onTabPress,
 }) {
+  const router = useRouter();
+
   const tabs = [
     {
       label: "Home",
       icon: "home-outline",
       activeIcon: "home",
+      route: "/(driver)",
     },
     {
       label: "Map",
       icon: "map-outline",
       activeIcon: "map",
+      route: "/(driver)/map",
     },
     {
       label: "History",
       icon: "time-outline",
       activeIcon: "time",
+      route: "/(driver)/history",
     },
   ];
+
+  const handleTabPress = (tab) => {
+    // If parent provides custom handling, keep using it.
+    if (onTabPress) {
+      onTabPress(tab.label);
+      return;
+    }
+
+    // Otherwise navigate directly.
+    router.push(tab.route);
+  };
 
   return (
     <View style={styles.container}>
@@ -33,7 +50,7 @@ export default function DriverBottomNav({
           <TouchableOpacity
             key={tab.label}
             style={styles.tab}
-            onPress={() => onTabPress?.(tab.label)}
+            onPress={() => handleTabPress(tab)}
             activeOpacity={0.7}
           >
             <Ionicons

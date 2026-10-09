@@ -26,7 +26,13 @@ export default function DriverDashboard() {
   };
 
   const handleTabPress = (tab) => {
-    console.log(`TAB CLICKED: ${tab}`);
+    if (tab === "Home") {
+      router.push("/(driver)");
+    } else if (tab === "Map") {
+      router.push("/(driver)/map");
+    } else if (tab === "History") {
+      router.push("/(driver)/history");
+    }
   };
 
   const handleProfilePress = () => {

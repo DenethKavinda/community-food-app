@@ -6,7 +6,7 @@ const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   (Platform.OS === "web"
     ? "http://localhost:5000/api"
-    : "http://192.168.1.8:5000/api");
+    : "http://192.168.1.11:5000/api");
 
 const API = axios.create({
   baseURL: API_BASE_URL,

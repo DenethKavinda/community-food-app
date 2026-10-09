@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,31 +8,100 @@ import {
   TextInput,
   Alert,
 } from "react-native";
+
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
+import { AuthContext } from "../../context/AuthContext";
+import API from "../../services/api";
+
 export default function DriverProfile() {
   const router = useRouter();
+  const { user, updateUserProfile } = useContext(AuthContext);
 
-  const [fullName, setFullName] = useState("Pasindu Gamage");
-  const [displayName, setDisplayName] = useState("Pasindu G.");
-  const [email, setEmail] = useState("pasindu@example.com");
-  const [phone, setPhone] = useState("+94 77 123 4567");
-  const [district, setDistrict] = useState("Colombo 03 (Kollupitiya)");
+  const [fullName, setFullName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [district, setDistrict] = useState("");
+
   const [bio, setBio] = useState(
     "Passionate about helping communities and reducing food waste through reliable food deliveries."
   );
 
-  const handleSave = () => {
-    Alert.alert(
-      "Profile Updated",
-      "Your profile changes have been saved successfully."
-    );
+  const [saving, setSaving] = useState(false);
+
+  // Load current logged-in user details
+  useEffect(() => {
+    if (!user) return;
+
+    setFullName(user.name || "");
+    setDisplayName(user.name?.split(" ")[0] || "");
+    setEmail(user.email || "");
+    setPhone(user.phone || "");
+    setDistrict(user.address || "");
+  }, [user]);
+
+  // Save profile changes to backend
+  const handleSave = async () => {
+    if (!fullName.trim()) {
+      Alert.alert("Required", "Please enter your full name.");
+      return;
+    }
+
+    if (!email.trim()) {
+      Alert.alert("Required", "Please enter your email address.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const response = await API.put("/auth/profile", {
+        name: fullName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        address: district.trim(),
+      });
+
+      if (response.data?.success) {
+        const updatedUser = response.data.user;
+
+        // Update AuthContext + AsyncStorage
+        await updateUserProfile(updatedUser);
+
+        // Keep display name local because it is not stored
+        // in the current users table.
+        setDisplayName(updatedUser.name?.split(" ")[0] || "");
+
+        Alert.alert(
+          "Profile Updated",
+          "Your profile changes have been saved successfully."
+        );
+      } else {
+        Alert.alert(
+          "Update Failed",
+          response.data?.message || "Could not update your profile."
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Profile update error:",
+        error?.response?.data || error.message
+      );
+
+      Alert.alert(
+        "Update Failed",
+        error?.response?.data?.message ||
+          "Something went wrong while updating your profile."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <View style={styles.container}>
-
       {/* ================= HEADER ================= */}
 
       <View style={styles.header}>
@@ -63,11 +132,9 @@ export default function DriverProfile() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-
         {/* ================= PROFILE PHOTO ================= */}
 
         <View style={styles.profileSection}>
-
           <View style={styles.avatar}>
             <Ionicons
               name="person"
@@ -91,9 +158,7 @@ export default function DriverProfile() {
               </Text>
             </TouchableOpacity>
 
-            <Text style={styles.dot}>
-              •
-            </Text>
+            <Text style={styles.dot}>•</Text>
 
             <TouchableOpacity>
               <Text style={styles.removePhoto}>
@@ -113,7 +178,6 @@ export default function DriverProfile() {
               VERIFIED DRIVER
             </Text>
           </View>
-
         </View>
 
         {/* ================= PERSONAL INFORMATION ================= */}
@@ -124,7 +188,6 @@ export default function DriverProfile() {
         />
 
         <View style={styles.sectionCard}>
-
           <InputField
             label="Full Name"
             icon="person-outline"
@@ -187,7 +250,6 @@ export default function DriverProfile() {
               color="#374151"
             />
           </View>
-
         </View>
 
         {/* ================= CONTACT ================= */}
@@ -198,7 +260,6 @@ export default function DriverProfile() {
         />
 
         <View style={styles.sectionCard}>
-
           <InputField
             label="Email Address"
             icon="mail-outline"
@@ -238,7 +299,6 @@ export default function DriverProfile() {
             value={district}
             onChangeText={setDistrict}
           />
-
         </View>
 
         {/* ================= COMMUNITY BIO ================= */}
@@ -249,7 +309,6 @@ export default function DriverProfile() {
         />
 
         <View style={styles.sectionCard}>
-
           <Text style={styles.fieldLabel}>
             Short Bio (Optional)
           </Text>
@@ -277,13 +336,11 @@ export default function DriverProfile() {
               {bio.length}/200
             </Text>
           </View>
-
         </View>
 
         {/* ================= DRIVER SAFETY ================= */}
 
         <View style={styles.safetyCard}>
-
           <View style={styles.safetyIcon}>
             <Ionicons
               name="shield-checkmark-outline"
@@ -293,7 +350,6 @@ export default function DriverProfile() {
           </View>
 
           <View style={styles.safetyInfo}>
-
             <Text style={styles.safetyTitle}>
               Safe Food Delivery Active
             </Text>
@@ -302,26 +358,28 @@ export default function DriverProfile() {
               Your driver account follows standard food
               handling and community delivery guidelines.
             </Text>
-
           </View>
-
         </View>
 
         {/* ================= SAVE ================= */}
 
         <TouchableOpacity
-          style={styles.saveButton}
+          style={[
+            styles.saveButton,
+            saving && styles.saveButtonDisabled,
+          ]}
           onPress={handleSave}
           activeOpacity={0.85}
+          disabled={saving}
         >
           <Ionicons
-            name="save-outline"
+            name={saving ? "sync-outline" : "save-outline"}
             size={19}
             color="#FFFFFF"
           />
 
           <Text style={styles.saveText}>
-            Save Changes
+            {saving ? "Saving..." : "Save Changes"}
           </Text>
         </TouchableOpacity>
 
@@ -330,6 +388,7 @@ export default function DriverProfile() {
         <TouchableOpacity
           style={styles.discardButton}
           onPress={() => router.back()}
+          disabled={saving}
         >
           <Text style={styles.discardText}>
             Discard Changes
@@ -339,7 +398,6 @@ export default function DriverProfile() {
         {/* ================= FOOTER ================= */}
 
         <View style={styles.footerNote}>
-
           <Ionicons
             name="lock-closed-outline"
             size={14}
@@ -350,11 +408,8 @@ export default function DriverProfile() {
             Changes sync immediately across volunteer driver
             and delivery records.
           </Text>
-
         </View>
-
       </ScrollView>
-
     </View>
   );
 }
@@ -366,7 +421,6 @@ export default function DriverProfile() {
 function SectionHeader({ title, rightText }) {
   return (
     <View style={styles.sectionHeader}>
-
       <Text style={styles.sectionHeaderTitle}>
         {title}
       </Text>
@@ -374,7 +428,6 @@ function SectionHeader({ title, rightText }) {
       <Text style={styles.sectionHeaderRight}>
         {rightText}
       </Text>
-
     </View>
   );
 }
@@ -392,13 +445,11 @@ function InputField({
 }) {
   return (
     <View style={styles.inputGroup}>
-
       <Text style={styles.fieldLabel}>
         {label}
       </Text>
 
       <View style={styles.inputBox}>
-
         <Ionicons
           name={icon}
           size={18}
@@ -412,9 +463,7 @@ function InputField({
           keyboardType={keyboardType}
           placeholderTextColor="#9CA3AF"
         />
-
       </View>
-
     </View>
   );
 }
@@ -424,7 +473,6 @@ function InputField({
 ===================================================== */
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
     backgroundColor: "#F8FAF9",
@@ -767,11 +815,17 @@ const styles = StyleSheet.create({
     gap: 7,
   },
 
+  saveButtonDisabled: {
+    opacity: 0.65,
+  },
+
   saveText: {
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "700",
   },
+
+  /* ================= DISCARD ================= */
 
   discardButton: {
     height: 48,
@@ -806,5 +860,4 @@ const styles = StyleSheet.create({
     color: "#4B5563",
     lineHeight: 15,
   },
-
 });

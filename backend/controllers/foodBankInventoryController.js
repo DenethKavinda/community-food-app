@@ -34,10 +34,31 @@ function parseExpiry(value, createdAt) {
     return Number.isNaN(date.getTime()) ? null : date;
   }
 
-  const relative = raw.match(/^(Today|Tomorrow|Yesterday),?\s*(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const namedDate = raw.match(/^([A-Za-z]{3,9})\s+(\d{1,2})(?:,?\s+(\d{4}))?(?:,?\s+(\d{1,2}):(\d{2})\s*(AM|PM))?$/i);
+  if (namedDate) {
+    const year = namedDate[3] ? Number(namedDate[3]) : base.getFullYear();
+    const date = new Date(`${namedDate[1]} ${namedDate[2]}, ${year}`);
+    if (namedDate[4]) {
+      let hour = Number(namedDate[4]);
+      if (namedDate[6].toUpperCase() === "PM" && hour !== 12) hour += 12;
+      if (namedDate[6].toUpperCase() === "AM" && hour === 12) hour = 0;
+      date.setHours(hour, Number(namedDate[5]), 0, 0);
+    } else {
+      date.setHours(23, 59, 59, 0);
+    }
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const relative = raw.match(/^(Today|Tomorrow|Yesterday|In 2 Days),?\s*(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   if (!relative) return null;
   const date = new Date(base);
-  const dayOffset = relative[1].toLowerCase() === "tomorrow" ? 1 : relative[1].toLowerCase() === "yesterday" ? -1 : 0;
+  const dayOffset = relative[1].toLowerCase() === "tomorrow"
+    ? 1
+    : relative[1].toLowerCase() === "yesterday"
+      ? -1
+      : relative[1].toLowerCase() === "in 2 days"
+        ? 2
+        : 0;
   date.setDate(date.getDate() + dayOffset);
   let hour = Number(relative[2]);
   if (relative[4].toUpperCase() === "PM" && hour !== 12) hour += 12;
@@ -86,7 +107,8 @@ exports.getInventory = async (req, res) => {
                 fi.category,
                 fbc.requested_portions AS quantity,
                 d.quantity_unit,
-                d.expiry_window,
+                d.expiry_window AS expiry_window,
+                d.expiry_window AS donor_expiry_window,
                 d.created_at,
                 d.image_url,
                 fbc.created_at AS claimed_at,
@@ -109,7 +131,8 @@ exports.getInventory = async (req, res) => {
                 NULL AS category,
                 fbc.requested_portions AS quantity,
                 'portions' AS quantity_unit,
-                d.expiry_window,
+                d.expiry_window AS expiry_window,
+                d.expiry_window AS donor_expiry_window,
                 d.created_at,
                 d.image_url,
                 fbc.created_at AS claimed_at,
@@ -176,6 +199,52 @@ exports.createInventoryItem = async (req, res) => {
   } catch (error) {
     console.error("Create food bank inventory item error:", error);
     res.status(500).json({ success: false, message: "Server error saving inventory item.", error: error.message });
+  }
+};
+
+exports.updateInventoryItem = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const { item_name, category, quantity, quantity_unit, expiry_at, notes } = req.body;
+  const numericQuantity = Number(quantity);
+  if (!item_name || !String(item_name).trim() || !Number.isFinite(numericQuantity) || numericQuantity <= 0) {
+    return res.status(400).json({ success: false, message: "Item name and a positive quantity are required." });
+  }
+  if (expiry_at && Number.isNaN(new Date(expiry_at).getTime())) {
+    return res.status(400).json({ success: false, message: "Expiry date and time is invalid." });
+  }
+
+  try {
+    await inventoryTableReady;
+    const [result] = await pool.query(
+      `UPDATE food_bank_inventory
+       SET item_name = ?, category = ?, quantity = ?, quantity_unit = ?, expiry_at = ?, notes = ?
+       WHERE id = ? AND food_bank_id = ?`,
+      [
+        String(item_name).trim(),
+        category ? String(category).trim() : null,
+        numericQuantity,
+        quantity_unit ? String(quantity_unit).trim() : "items",
+        toMysqlDatetime(expiry_at),
+        notes ? String(notes).trim() : null,
+        req.params.id,
+        req.user.id,
+      ]
+    );
+    if (!result.affectedRows) {
+      return res.status(404).json({ success: false, message: "Inventory item not found." });
+    }
+
+    const [rows] = await pool.query(
+      "SELECT id, item_name, category, quantity, quantity_unit, expiry_at, notes, created_at, 'manual' AS source_type FROM food_bank_inventory WHERE id = ? AND food_bank_id = ?",
+      [req.params.id, req.user.id]
+    );
+    res.json({ success: true, item: enrich(rows[0]) });
+  } catch (error) {
+    console.error("Update food bank inventory item error:", error);
+    res.status(500).json({ success: false, message: "Server error updating inventory item.", error: error.message });
   }
 };
 
