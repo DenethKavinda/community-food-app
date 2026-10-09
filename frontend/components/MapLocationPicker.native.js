@@ -71,7 +71,8 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
   },
   map: {
-    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
   },
   selectedText: {
     fontSize: 13,
