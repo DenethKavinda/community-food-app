@@ -65,7 +65,7 @@ exports.createDonation = async (req, res) => {
     });
   }
 
-  const finalQuantityUnit = quantity_unit ? quantity_unit.trim().toLowerCase() : "portions";
+  const finalQuantityUnit = quantity_unit ? quantity_unit.trim().toLowerCase() : "items";
 
   // If food_item_id is provided, try to fetch the item's name if meal_name is empty
   if (validFoodItemId && !finalMealName) {
@@ -146,6 +146,23 @@ exports.createDonation = async (req, res) => {
             `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_url, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
             [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl]
+          );
+        }
+      } else if (dbErr.errno === 1054 || dbErr.code === "ER_BAD_FIELD_ERROR") {
+        try {
+          await pool.query("ALTER TABLE donations ADD COLUMN quantity_unit VARCHAR(50) DEFAULT 'items'");
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [donor_id, validFoodItemId, finalMealName, String(numericQty), finalQuantityUnit, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl, statusToUse]
+          );
+        } catch (alterErr) {
+          console.warn("Could not add quantity_unit column, falling back without column:", alterErr.message);
+          const combinedQty = `${numericQty} ${finalQuantityUnit}`;
+          [result] = await pool.query(
+            `INSERT INTO donations (donor_id, food_item_id, meal_name, quantity, location, latitude, longitude, expiry_window, notes, image_url, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')`,
+            [donor_id, validFoodItemId, finalMealName, combinedQty, location, parsedLat, parsedLng, expiry_window, notes || null, savedImageUrl]
           );
         }
       } else {
@@ -403,12 +420,125 @@ exports.updateDonationStatus = async (req, res) => {
   }
 };
 
+// 4.5. UPDATE DONATION DETAILS (Donor Only)
+exports.updateDonation = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const { id } = req.params;
+  const donor_id = req.user.id;
+  const { meal_name, quantity, quantity_unit, location, latitude, longitude, expiry_window, notes, image_base64, image_url } = req.body;
+
+  try {
+    const [existing] = await pool.query(
+      "SELECT * FROM donations WHERE id = ? AND donor_id = ?",
+      [id, donor_id]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({ success: false, message: "Donation post not found or access denied." });
+    }
+
+    const current = existing[0];
+
+    let finalMealName = meal_name ? meal_name.trim() : current.meal_name;
+    let numericQty = quantity !== undefined && quantity !== null && String(quantity).trim() !== "" ? parseFloat(quantity) : parseFloat(current.quantity);
+    if (isNaN(numericQty) || numericQty <= 0) {
+      return res.status(400).json({ success: false, message: "Quantity must be a number greater than 0." });
+    }
+
+    let finalUnit = quantity_unit ? quantity_unit.trim().toLowerCase() : (current.quantity_unit || "items");
+    let finalLocation = location ? location.trim() : current.location;
+    let finalExpiry = expiry_window ? expiry_window.trim() : current.expiry_window;
+    let finalNotes = notes !== undefined ? notes.trim() : current.notes;
+    let parsedLat = latitude !== undefined && latitude !== null && !isNaN(Number(latitude)) ? parseFloat(latitude) : current.latitude;
+    let parsedLng = longitude !== undefined && longitude !== null && !isNaN(Number(longitude)) ? parseFloat(longitude) : current.longitude;
+
+    let savedImageUrl = current.image_url;
+    if (image_url !== undefined) {
+      savedImageUrl = image_url;
+    } else if (image_base64) {
+      try {
+        const matches = image_base64.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+        let ext = "jpg";
+        let base64Data = image_base64;
+        if (matches && matches.length === 3) {
+          ext = matches[1];
+          base64Data = matches[2];
+        }
+        const fileName = `donation-${Date.now()}-${Math.floor(Math.random() * 1000)}.${ext}`;
+        const filePath = path.join(uploadsDir, fileName);
+        fs.writeFileSync(filePath, Buffer.from(base64Data, "base64"));
+        savedImageUrl = `/uploads/donations/${fileName}`;
+      } catch (e) {
+        console.warn("Base64 save error during update:", e.message);
+      }
+    }
+
+    try {
+      await pool.query(
+        `UPDATE donations 
+         SET meal_name = ?, quantity = ?, quantity_unit = ?, location = ?, latitude = ?, longitude = ?, expiry_window = ?, notes = ?, image_url = ?
+         WHERE id = ? AND donor_id = ?`,
+        [finalMealName, String(numericQty), finalUnit, finalLocation, parsedLat, parsedLng, finalExpiry, finalNotes || null, savedImageUrl, id, donor_id]
+      );
+    } catch (dbErr) {
+      if (dbErr.errno === 1054 || dbErr.code === "ER_BAD_FIELD_ERROR") {
+        console.warn("quantity_unit column missing in donations table, attempting ALTER TABLE...");
+        try {
+          await pool.query("ALTER TABLE donations ADD COLUMN quantity_unit VARCHAR(50) DEFAULT 'items'");
+          await pool.query(
+            `UPDATE donations 
+             SET meal_name = ?, quantity = ?, quantity_unit = ?, location = ?, latitude = ?, longitude = ?, expiry_window = ?, notes = ?, image_url = ?
+             WHERE id = ? AND donor_id = ?`,
+            [finalMealName, String(numericQty), finalUnit, finalLocation, parsedLat, parsedLng, finalExpiry, finalNotes || null, savedImageUrl, id, donor_id]
+          );
+        } catch (alterErr) {
+          console.warn("Could not add quantity_unit column, updating without it:", alterErr.message);
+          await pool.query(
+            `UPDATE donations 
+             SET meal_name = ?, quantity = ?, location = ?, latitude = ?, longitude = ?, expiry_window = ?, notes = ?, image_url = ?
+             WHERE id = ? AND donor_id = ?`,
+            [finalMealName, String(numericQty), finalLocation, parsedLat, parsedLng, finalExpiry, finalNotes || null, savedImageUrl, id, donor_id]
+          );
+        }
+      } else {
+        throw dbErr;
+      }
+    }
+
+    const [updated] = await pool.query("SELECT * FROM donations WHERE id = ?", [id]);
+
+    res.json({
+      success: true,
+      message: "Donation updated successfully.",
+      donation: updated[0],
+    });
+  } catch (error) {
+    console.error("updateDonation error:", error);
+    res.status(500).json({ success: false, message: "Server error updating donation", error: error.message });
+  }
+};
+
 // 5. DELETE DONATION
 exports.deleteDonation = async (req, res) => {
   const { id } = req.params;
+  const donor_id = req.user ? req.user.id : null;
 
   try {
-    const [result] = await pool.query("DELETE FROM donations WHERE id = ?", [id]);
+    // Delete dependent references first if any to avoid foreign key issues
+    await pool.query("DELETE FROM notifications WHERE donation_id = ?", [id]).catch(() => {});
+    await pool.query("DELETE FROM requests WHERE donation_id = ?", [id]).catch(() => {});
+    await pool.query("DELETE FROM food_bank_claims WHERE donation_id = ?", [id]).catch(() => {});
+    await pool.query("DELETE FROM driver_tasks WHERE donation_id = ?", [id]).catch(() => {});
+
+    let result;
+    if (donor_id) {
+      [result] = await pool.query("DELETE FROM donations WHERE id = ? AND donor_id = ?", [id, donor_id]);
+    } else {
+      [result] = await pool.query("DELETE FROM donations WHERE id = ?", [id]);
+    }
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Donation item not found." });
@@ -416,6 +546,7 @@ exports.deleteDonation = async (req, res) => {
 
     res.json({ message: "Donation post deleted successfully." });
   } catch (error) {
+    console.error("Delete donation error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
@@ -527,5 +658,83 @@ exports.getDonorStats = async (req, res) => {
   } catch (error) {
     console.error("getDonorStats error:", error);
     res.status(500).json({ success: false, message: "Server error fetching stats", error: error.message });
+  }
+};
+
+// 8. GET DONOR NOTIFICATIONS (Strictly Authenticated User ID)
+exports.getNotifications = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const donorId = req.user.id;
+
+  try {
+    // Run automated expiration check
+    const { checkAndNotifyExpiredDonations } = require("../services/donorNotificationService");
+    await checkAndNotifyExpiredDonations();
+
+    const [notifications] = await pool.query(
+      "SELECT * FROM notifications WHERE recipient_id = ? ORDER BY created_at DESC LIMIT 100",
+      [donorId]
+    );
+
+    const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+    res.json({
+      success: true,
+      unreadCount,
+      notifications,
+    });
+  } catch (error) {
+    console.error("getNotifications error:", error);
+    res.status(500).json({ success: false, message: "Server error fetching notifications", error: error.message });
+  }
+};
+
+// 9. MARK SINGLE NOTIFICATION AS READ
+exports.markAsRead = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const donorId = req.user.id;
+  const notificationId = req.params.id;
+
+  try {
+    const [result] = await pool.query(
+      "UPDATE notifications SET is_read = TRUE WHERE id = ? AND recipient_id = ?",
+      [notificationId, donorId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Notification not found or access denied." });
+    }
+
+    res.json({ success: true, message: "Notification marked as read." });
+  } catch (error) {
+    console.error("markAsRead error:", error);
+    res.status(500).json({ success: false, message: "Server error updating notification", error: error.message });
+  }
+};
+
+// 10. MARK ALL NOTIFICATIONS AS READ
+exports.markAllAsRead = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ success: false, message: "Authentication required." });
+  }
+
+  const donorId = req.user.id;
+
+  try {
+    await pool.query(
+      "UPDATE notifications SET is_read = TRUE WHERE recipient_id = ?",
+      [donorId]
+    );
+
+    res.json({ success: true, message: "All notifications marked as read." });
+  } catch (error) {
+    console.error("markAllAsRead error:", error);
+    res.status(500).json({ success: false, message: "Server error updating notifications", error: error.message });
   }
 };

@@ -77,14 +77,14 @@ export default function DonationCard({ donation, onPress }) {
 
         <View style={styles.infoRow}>
           <MaterialCommunityIcons name="silverware-fork-knife" size={13} color="#6B7280" style={styles.icon} />
-          <Text style={styles.infoText}>
-            Orig: {donation.originalQuantity ?? quantity} • Res: {donation.reservedQuantity ?? 0}
+          <Text style={styles.infoText} numberOfLines={1}>
+            Orig: <Text style={{ fontWeight: "700" }}>{donation.originalQuantity ?? quantity}</Text>  •  Res: <Text style={{ fontWeight: "700" }}>{donation.reservedQuantity ?? 0}</Text>
           </Text>
         </View>
 
         <View style={styles.infoRow}>
           <Ionicons name="pie-chart-outline" size={13} color="#087A3D" style={styles.icon} />
-          <Text style={[styles.infoText, { fontWeight: "700", color: donation.availableQuantity === 0 ? "#DC2626" : "#087A3D" }]}>
+          <Text style={[styles.infoText, { fontWeight: "700", color: donation.availableQuantity === 0 ? "#DC2626" : "#087A3D" }]} numberOfLines={1}>
             Avail: {donation.availableQuantity === 0 ? "Fully Reserved" : `${donation.availableQuantity ?? quantity} ${donation.unit || ''}`}
           </Text>
         </View>

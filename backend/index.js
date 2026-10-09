@@ -16,6 +16,10 @@ const driverRoutes = require("./routes/driverRoutes");
 // Ensure DB connection initializes
 require("./config/db");
 
+// Start offline donation expiration scheduler
+const { initDonationExpiryScheduler } = require("./jobs/donationExpiryScheduler");
+initDonationExpiryScheduler();
+
 const app = express();
 
 // Middleware
