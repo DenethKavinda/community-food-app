@@ -321,7 +321,7 @@ if (showCamera) {
             <View style={styles.foodInfo}>
               <View style={styles.foodTitleRow}>
                 <Text style={styles.foodTitle}>
-                  Rice & Curry
+                  {params.mealName || "Food Donation"}
                 </Text>
 
                 <View style={styles.portionBadge}>

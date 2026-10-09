@@ -271,6 +271,14 @@ export default function DriverMap() {
         taskType: pickup.task_type || "",
         claimId: pickup.claim_id ? String(pickup.claim_id) : "",
         requestId: pickup.request_id ? String(pickup.request_id) : "",
+        mealName: pickup.meal_name || "",
+        quantity: String(pickup.quantity ?? ""),
+        quantityUnit: pickup.quantity_unit || "portions",
+        pickupAddress: pickup.pickup_address || "",
+        donorName: pickup.donor_name || "",
+        imageUrl: pickup.image_url || "",
+        notes: pickup.notes || "",
+        expiryWindow: pickup.expiry_window || "",
         destinationAddress: pickup.destination_address || "",
         destinationLatitude: destinationLatitude
           ? String(destinationLatitude)
