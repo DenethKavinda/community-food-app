@@ -46,9 +46,29 @@ function isFutureExpiry(expiryStr) {
     targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + 2);
   } else {
-    const parsed = new Date(str);
+    // Extract only the date portion (before the comma+time) and try to parse it
+    const datePart = str.split(",")[0].trim();
+    // Try adding current year so "Oct 10" becomes "Oct 10 2026"
+    const withYear = `${datePart} ${now.getFullYear()}`;
+    const parsed = new Date(withYear);
     if (!isNaN(parsed.getTime())) {
-      return parsed > now;
+      targetDate = parsed;
+      // If that date already passed this year, try next year
+      if (targetDate < now) {
+        const withNextYear = `${datePart} ${now.getFullYear() + 1}`;
+        const parsedNext = new Date(withNextYear);
+        if (!isNaN(parsedNext.getTime())) {
+          targetDate = parsedNext;
+        }
+      }
+    } else {
+      // Fallback: try parsing the whole string directly
+      const fullParsed = new Date(str);
+      if (!isNaN(fullParsed.getTime())) {
+        return fullParsed > now;
+      }
+      // Cannot parse — allow it through
+      return true;
     }
   }
 

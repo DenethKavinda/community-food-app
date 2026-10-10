@@ -32,7 +32,7 @@ function isExpiryPassed(expiryWindowStr, createdAtStr) {
   const str = expiryWindowStr.trim();
   const now = new Date();
 
-  let targetDate = new Date(createdAtStr || now);
+  let targetDate = new Date();
 
   if (str.toLowerCase().startsWith("today")) {
     targetDate = new Date();
@@ -44,6 +44,20 @@ function isExpiryPassed(expiryWindowStr, createdAtStr) {
   } else if (str.toLowerCase().startsWith("in 2 days")) {
     targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + 2);
+  } else {
+    // Custom calendar date like "Oct 10, 09:00 PM"
+    const datePart = str.split(",")[0].trim();
+    const withYear = `${datePart} ${now.getFullYear()}`;
+    const parsed = new Date(withYear);
+    if (!isNaN(parsed.getTime())) {
+      targetDate = parsed;
+    } else {
+      const fullParsed = new Date(str);
+      if (!isNaN(fullParsed.getTime())) {
+        return fullParsed < now;
+      }
+      return false;
+    }
   }
 
   const timeMatch = str.match(/(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i);
@@ -59,13 +73,9 @@ function isExpiryPassed(expiryWindowStr, createdAtStr) {
     return targetDate < now;
   }
 
-  const directDate = new Date(str.includes(",") ? str.split(",")[0] : str);
-  if (!isNaN(directDate.getTime())) {
-    directDate.setHours(23, 59, 59, 999);
-    return directDate < now;
-  }
-
-  return false;
+  // No time component — treat end of day as expiry
+  targetDate.setHours(23, 59, 59, 999);
+  return targetDate < now;
 }
 
 // ── Generic Idempotent Notification Inserter ──
