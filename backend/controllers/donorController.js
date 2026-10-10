@@ -229,7 +229,7 @@ function isExpiryPassed(expiryWindowStr, createdAtStr) {
   const str = expiryWindowStr.trim();
   const now = new Date();
 
-  let targetDate = new Date(createdAtStr || now);
+  let targetDate = new Date();
 
   if (str.toLowerCase().startsWith("today")) {
     targetDate = new Date();
@@ -241,6 +241,22 @@ function isExpiryPassed(expiryWindowStr, createdAtStr) {
   } else if (str.toLowerCase().startsWith("in 2 days")) {
     targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + 2);
+  } else {
+    // Custom calendar date like "Oct 10, 09:00 PM"
+    // Extract the date part (before the comma) and append current year
+    const datePart = str.split(",")[0].trim();
+    const withYear = `${datePart} ${now.getFullYear()}`;
+    const parsed = new Date(withYear);
+    if (!isNaN(parsed.getTime())) {
+      targetDate = parsed;
+    } else {
+      // Full direct fallback
+      const fullParsed = new Date(str);
+      if (!isNaN(fullParsed.getTime())) {
+        return fullParsed < now;
+      }
+      return false;
+    }
   }
 
   // Extract time portion e.g. "05:00 PM" or "17:00"
@@ -257,14 +273,9 @@ function isExpiryPassed(expiryWindowStr, createdAtStr) {
     return targetDate < now;
   }
 
-  // Fallback: direct date parse
-  const directDate = new Date(str.includes(",") ? str.split(",")[0] : str);
-  if (!isNaN(directDate.getTime())) {
-    directDate.setHours(23, 59, 59, 999);
-    return directDate < now;
-  }
-
-  return false;
+  // No time component found — treat end of day as expiry
+  targetDate.setHours(23, 59, 59, 999);
+  return targetDate < now;
 }
 
 // 2. GET DONATIONS (Logged-in Donor History or All Posts)
@@ -312,7 +323,7 @@ exports.getDonorDonations = async (req, res) => {
 
     // Aggregate reserved portions across recipient requests & food bank claims
     const [requests] = await pool.query(
-      "SELECT donation_id, SUM(requested_portions) as reserved FROM requests WHERE status IN ('Pending', 'Approved') GROUP BY donation_id"
+      "SELECT donation_id, SUM(requested_portions) as reserved FROM requests WHERE status NOT IN ('Cancelled') GROUP BY donation_id"
     );
     const [foodBankClaims] = await pool.query(
       `SELECT donation_id, SUM(requested_portions) AS reserved
@@ -373,7 +384,7 @@ exports.getDonationById = async (req, res) => {
     }
 
     const [requests] = await pool.query(
-      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status IN ('Pending', 'Approved')",
+      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status NOT IN ('Cancelled')",
       [d.id]
     );
     const [foodBankClaims] = await pool.query(
@@ -567,7 +578,7 @@ exports.getAvailableDonations = async (req, res) => {
 
     // Recipient requests and food-bank claims both reserve from the same donation balance.
     const [requests] = await pool.query(
-      "SELECT donation_id, SUM(requested_portions) as reserved FROM requests WHERE status IN ('Pending', 'Approved') GROUP BY donation_id"
+      "SELECT donation_id, SUM(requested_portions) as reserved FROM requests WHERE status NOT IN ('Cancelled') GROUP BY donation_id"
     );
     const [foodBankClaims] = await pool.query(
       `SELECT donation_id, SUM(requested_portions) AS reserved

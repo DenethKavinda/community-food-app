@@ -47,7 +47,7 @@ exports.createClaim = async (req, res) => {
     const [reserved] = await pool.query(
       `SELECT
          COALESCE((SELECT SUM(requested_portions) FROM requests
-           WHERE donation_id = ? AND status IN ('Pending', 'Approved')), 0) +
+           WHERE donation_id = ? AND status NOT IN ('Cancelled')), 0) +
          COALESCE((SELECT SUM(requested_portions) FROM food_bank_claims
            WHERE donation_id = ? AND status NOT IN ('Cancelled', 'Rejected')), 0) AS reserved`,
       [donation_id, donation_id]
