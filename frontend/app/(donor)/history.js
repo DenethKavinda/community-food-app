@@ -18,6 +18,8 @@ import { useRouter } from "expo-router";
 import API from "../../services/api";
 import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
+import EditDonationModal from "../../components/donor/EditDonationModal";
+import FeedbackModal from "../../components/common/FeedbackModal";
 import { getMyDonations, deleteDonation } from "../../services/donorService";
 import { AuthContext } from "../../context/AuthContext";
 
@@ -48,9 +50,20 @@ export default function DonationHistoryScreen() {
   // View Details Modal state
   const [selectedDonation, setSelectedDonation] = useState(null);
 
+  // Edit Modal state
+  const [editingDonation, setEditingDonation] = useState(null);
+
   // Delete Confirmation Modal state
   const [deletingDonation, setDeletingDonation] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Pop Up Feedback Modal State
+  const [feedbackModal, setFeedbackModal] = useState({
+    visible: false,
+    type: "success",
+    title: "",
+    message: "",
+  });
 
   const fetchDonations = useCallback(async () => {
     setLoading(true);
@@ -66,9 +79,15 @@ export default function DonationHistoryScreen() {
           const origQty = item.original_quantity ?? (parseInt(item.quantity) || 0);
           const resQty = item.reserved_quantity ?? 0;
           const availQty = item.available_quantity ?? Math.max(0, origQty - resQty);
-          const unit = item.quantity_unit
-            ? item.quantity_unit.charAt(0).toUpperCase() + item.quantity_unit.slice(1)
-            : "Portions";
+          const rawUnit = item.quantity_unit || "Items";
+          const unit =
+            rawUnit.toLowerCase() === "kg"
+              ? "Kg"
+              : rawUnit.toLowerCase() === "g"
+              ? "g"
+              : rawUnit.toLowerCase() === "ml"
+              ? "ml"
+              : rawUnit.charAt(0).toUpperCase() + rawUnit.slice(1);
 
           let formattedQty = `${origQty} ${unit}`;
 
@@ -125,19 +144,27 @@ export default function DonationHistoryScreen() {
 
     setIsDeleting(true);
     try {
-      await deleteDonation(deletingDonation.id);
+      const res = await deleteDonation(deletingDonation.id);
       setDonations((prev) =>
         prev.filter((item) => item.id !== deletingDonation.id),
       );
       if (selectedDonation && selectedDonation.id === deletingDonation.id) {
         setSelectedDonation(null);
       }
+      setFeedbackModal({
+        visible: true,
+        type: "success",
+        title: "Donation Deleted",
+        message: res?.message || "Donation post deleted successfully.",
+      });
     } catch (err) {
       console.warn("Delete request error:", err.message);
-      Alert.alert(
-        "Delete Error",
-        err.response?.data?.message || "Could not delete donation.",
-      );
+      setFeedbackModal({
+        visible: true,
+        type: "error",
+        title: "Delete Error",
+        message: err.response?.data?.message || err.message || "Could not delete donation.",
+      });
     } finally {
       setIsDeleting(false);
       setDeletingDonation(null);
@@ -388,18 +415,24 @@ export default function DonationHistoryScreen() {
 
                     {/* Quantity Breakdown Box */}
                     <View style={styles.qtyBreakdownBox}>
-                      <Text style={styles.qtyLineText}>
-                        Original: <Text style={styles.qtyBold}>{item.originalQuantity} {item.unit}</Text>
-                        {"  •  "}Reserved: <Text style={styles.qtyBold}>{item.reservedQuantity} {item.unit}</Text>
-                      </Text>
-                      <Text style={[styles.qtyLineText, { marginTop: 2 }]}>
-                        Available:{" "}
+                      <View style={styles.qtyMetricsRow}>
+                        <View style={styles.qtyMetricChip}>
+                          <Text style={styles.qtyLabelText}>Original: </Text>
+                          <Text style={styles.qtyValText}>{item.originalQuantity} {item.unit}</Text>
+                        </View>
+                        <View style={styles.qtyMetricChip}>
+                          <Text style={styles.qtyLabelText}>Reserved: </Text>
+                          <Text style={styles.qtyValText}>{item.reservedQuantity} {item.unit}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.qtyAvailRow}>
+                        <Text style={styles.qtyAvailLabelText}>Available: </Text>
                         {item.availableQuantity === 0 ? (
                           <Text style={styles.fullyReservedBadge}>Fully Reserved</Text>
                         ) : (
-                          <Text style={styles.availableBold}>{item.availableQuantity} {item.unit}</Text>
+                          <Text style={styles.availableHighlightVal}>{item.availableQuantity} {item.unit}</Text>
                         )}
-                      </Text>
+                      </View>
                     </View>
 
                     <View style={styles.dateRow}>
@@ -429,7 +462,22 @@ export default function DonationHistoryScreen() {
                         />
                       </TouchableOpacity>
 
-                      {item.status === "Pending" && (
+                      {item.status === "Pending" ? (
+                        <TouchableOpacity
+                          style={[
+                            styles.viewIconBtn,
+                            { backgroundColor: "#F0FDF4", borderColor: "#DCFCE7" },
+                          ]}
+                          onPress={() => setEditingDonation(item)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons
+                            name="create-outline"
+                            size={16}
+                            color="#087A3D"
+                          />
+                        </TouchableOpacity>
+                      ) : (
                         <TouchableOpacity
                           style={styles.deleteIconBtn}
                           onPress={() => setDeletingDonation(item)}
@@ -593,6 +641,29 @@ export default function DonationHistoryScreen() {
                 <View style={styles.modalActionButtonsRow}>
                   {selectedDonation.status === "Pending" ? (
                     <TouchableOpacity
+                      style={[
+                        styles.deleteModalBtn,
+                        { backgroundColor: "#F0FDF4", borderColor: "#DCFCE7" },
+                      ]}
+                      onPress={() => {
+                        const target = selectedDonation;
+                        setSelectedDonation(null);
+                        setEditingDonation(target);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name="create-outline"
+                        size={18}
+                        color="#087A3D"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={[styles.deleteModalBtnText, { color: "#087A3D" }]}>
+                        Edit Donation
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
                       style={styles.deleteModalBtn}
                       onPress={() => setDeletingDonation(selectedDonation)}
                       activeOpacity={0.85}
@@ -607,22 +678,6 @@ export default function DonationHistoryScreen() {
                         Delete Donation
                       </Text>
                     </TouchableOpacity>
-                  ) : (
-                    <View style={styles.readOnlyNoteBox}>
-                      <Ionicons
-                        name="information-circle-outline"
-                        size={16}
-                        color="#6B7280"
-                        style={{ marginRight: 4 }}
-                      />
-                      <Text style={styles.readOnlyNoteText}>
-                        Status:{" "}
-                        {selectedDonation.status === "Active"
-                          ? "Reserved"
-                          : selectedDonation.status}{" "}
-                        (Read Only)
-                      </Text>
-                    </View>
                   )}
 
                   <TouchableOpacity
@@ -689,6 +744,23 @@ export default function DonationHistoryScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Donation Modal */}
+      <EditDonationModal
+        visible={!!editingDonation}
+        onClose={() => setEditingDonation(null)}
+        donation={editingDonation}
+        onDonationUpdated={() => fetchDonations()}
+      />
+
+      {/* Feedback Pop Up Modal */}
+      <FeedbackModal
+        visible={feedbackModal.visible}
+        type={feedbackModal.type}
+        title={feedbackModal.title}
+        message={feedbackModal.message}
+        onClose={() => setFeedbackModal((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaView>
   );
 }
@@ -1221,17 +1293,52 @@ const styles = StyleSheet.create({
   },
   qtyBreakdownBox: {
     backgroundColor: "#F8FAFC",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    marginTop: 4,
-    marginBottom: 4,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginTop: 6,
+    marginBottom: 6,
     borderWidth: 1,
-    borderColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
   },
-  qtyLineText: {
-    fontSize: 11.5,
+  qtyMetricsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    rowGap: 3,
+    columnGap: 12,
+    marginBottom: 4,
+  },
+  qtyMetricChip: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  qtyLabelText: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  qtyValText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1E293B",
+  },
+  qtyAvailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingTop: 5,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+  },
+  qtyAvailLabelText: {
+    fontSize: 12,
     color: "#475569",
+    fontWeight: "600",
+  },
+  availableHighlightVal: {
+    fontSize: 12.5,
+    fontWeight: "800",
+    color: "#087A3D",
   },
   qtyBold: {
     fontWeight: "700",

@@ -97,7 +97,7 @@ exports.createRequest = async (req, res) => {
 
     // ── Run Available Portions Validation ──
     const [reservedReqs] = await pool.query(
-      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status IN ('Pending', 'Approved')",
+      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status NOT IN ('Cancelled')",
       [donation_id]
     );
 
@@ -268,7 +268,7 @@ exports.getRequestById = async (req, res) => {
 
     // Compute available portions excluding the current request itself
     const [reservedReqs] = await pool.query(
-      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status IN ('Pending', 'Approved') AND id != ?",
+      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status NOT IN ('Cancelled') AND id != ?",
       [requestData.donation_id, id]
     );
 
@@ -356,7 +356,7 @@ exports.updateRequest = async (req, res) => {
     );
 
     const [reservedReqs] = await pool.query(
-      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status IN ('Pending', 'Approved') AND id != ?",
+      "SELECT SUM(requested_portions) as reserved FROM requests WHERE donation_id = ? AND status NOT IN ('Cancelled') AND id != ?",
       [existing[0].donation_id, id]
     );
 

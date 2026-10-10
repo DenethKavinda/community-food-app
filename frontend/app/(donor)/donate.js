@@ -24,6 +24,7 @@ import LocationPickerModal, { reverseGeocodeCoords } from "../../components/dono
 import FoodItemSelector from "../../components/donor/FoodItemSelector";
 import ExpiryPickerModal from "../../components/donor/ExpiryPickerModal";
 import QuantityUnitSelector from "../../components/donor/QuantityUnitSelector";
+import FeedbackModal from "../../components/common/FeedbackModal";
 import { fetchFoodItems } from "../../services/foodItemService";
 import { createDonation } from "../../services/donorService";
 
@@ -45,9 +46,29 @@ function isFutureExpiry(expiryStr) {
     targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + 2);
   } else {
-    const parsed = new Date(str);
+    // Extract only the date portion (before the comma+time) and try to parse it
+    const datePart = str.split(",")[0].trim();
+    // Try adding current year so "Oct 10" becomes "Oct 10 2026"
+    const withYear = `${datePart} ${now.getFullYear()}`;
+    const parsed = new Date(withYear);
     if (!isNaN(parsed.getTime())) {
-      return parsed > now;
+      targetDate = parsed;
+      // If that date already passed this year, try next year
+      if (targetDate < now) {
+        const withNextYear = `${datePart} ${now.getFullYear() + 1}`;
+        const parsedNext = new Date(withNextYear);
+        if (!isNaN(parsedNext.getTime())) {
+          targetDate = parsedNext;
+        }
+      }
+    } else {
+      // Fallback: try parsing the whole string directly
+      const fullParsed = new Date(str);
+      if (!isNaN(fullParsed.getTime())) {
+        return fullParsed > now;
+      }
+      // Cannot parse — allow it through
+      return true;
     }
   }
 
@@ -83,6 +104,14 @@ export default function DonateFoodScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [createdDonation, setCreatedDonation] = useState(null);
+
+  // Pop Up Feedback Modal state
+  const [feedbackModal, setFeedbackModal] = useState({
+    visible: false,
+    type: "error",
+    title: "",
+    message: "",
+  });
 
   // Validation errors state
   const [errors, setErrors] = useState({});
@@ -248,17 +277,34 @@ export default function DonateFoodScreen() {
       if (data && data.donation) {
         setCreatedDonation(data.donation);
         setIsSubmitting(false);
-        setIsSubmitted(true);
+        setFeedbackModal({
+          visible: true,
+          type: "success",
+          title: "Donation Created Successfully!",
+          message: data.message || "Your surplus food donation post has been published and is now visible to nearby recipients.",
+          onCloseAction: () => {
+            setIsSubmitted(true);
+          },
+        });
       } else {
-        Alert.alert("Submission Failed", data?.message || "Failed to submit donation.");
+        setFeedbackModal({
+          visible: true,
+          type: "error",
+          title: "Submission Failed",
+          message: data?.message || "Failed to submit donation.",
+          onCloseAction: null,
+        });
         setIsSubmitting(false);
       }
     } catch (error) {
       console.warn("Donation submit error:", error.message);
-      Alert.alert(
-        "Submission Error",
-        error.response?.data?.message || error.message || "Failed to submit donation."
-      );
+      setFeedbackModal({
+        visible: true,
+        type: "error",
+        title: "Submission Error",
+        message: error.response?.data?.message || error.message || "Failed to submit donation.",
+        onCloseAction: null,
+      });
       setIsSubmitting(false);
     }
   };
@@ -586,6 +632,19 @@ export default function DonateFoodScreen() {
           if (errors.expiryWindow) {
             setErrors((prev) => ({ ...prev, expiryWindow: undefined }));
           }
+        }}
+      />
+
+      {/* Pop Up Feedback Modal */}
+      <FeedbackModal
+        visible={feedbackModal.visible}
+        type={feedbackModal.type}
+        title={feedbackModal.title}
+        message={feedbackModal.message}
+        onClose={() => {
+          const action = feedbackModal.onCloseAction;
+          setFeedbackModal((prev) => ({ ...prev, visible: false }));
+          if (action) action();
         }}
       />
     </SafeAreaView>
