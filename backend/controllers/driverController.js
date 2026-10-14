@@ -37,8 +37,8 @@ const getDriverPickups = async (req, res) => {
 
         u.name AS donor_name,
         u.phone AS donor_phone,
-        u.latitude AS pickup_latitude,
-        u.longitude AS pickup_longitude,
+        d.latitude AS pickup_latitude,
+        d.longitude AS pickup_longitude,
         d.location AS pickup_address,
 
         fbc.id AS claim_id,
@@ -83,8 +83,8 @@ const getDriverPickups = async (req, res) => {
 
         donor.name AS donor_name,
         donor.phone AS donor_phone,
-        donor.latitude AS pickup_latitude,
-        donor.longitude AS pickup_longitude,
+        d.latitude AS pickup_latitude,
+        d.longitude AS pickup_longitude,
         d.location AS pickup_address,
 
         r.id AS request_id,
@@ -376,6 +376,74 @@ const updateDriverTaskStatus = async (req, res) => {
 // GET DRIVER DELIVERY HISTORY
 // =====================================================
 
+
+const uploadDriverTaskPhoto = async (req, res) => {
+  try {
+    const { taskType, claimId, requestId, photoType } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Photo file is required.",
+      });
+    }
+
+    if (!["PICKUP", "DROPOFF"].includes(photoType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid photo type.",
+      });
+    }
+
+    let idColumn;
+    let taskId;
+
+    if (taskType === "FOOD_BANK" && claimId) {
+      idColumn = "claim_id";
+      taskId = claimId;
+    } else if (taskType === "RECIPIENT" && requestId) {
+      idColumn = "request_id";
+      taskId = requestId;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid task details.",
+      });
+    }
+
+    const photoColumn =
+      photoType === "PICKUP" ? "pickup_photo_url" : "dropoff_photo_url";
+
+    const photoUrl = `/uploads/${req.file.filename}`;
+
+    const [result] = await db.query(
+      `UPDATE driver_tasks
+       SET ${photoColumn} = ?
+       WHERE ${idColumn} = ?`,
+      [photoUrl, taskId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver task not found. Update task status first.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Photo uploaded successfully.",
+      photoUrl,
+    });
+  } catch (error) {
+    console.error("Upload driver task photo error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save driver task photo.",
+    });
+  }
+};
+
 const getDriverHistory = async (req, res) => {
   try {
     // =================================================
@@ -483,4 +551,5 @@ module.exports = {
   getDriverPickups,
   updateDriverTaskStatus,
   getDriverHistory,
+  uploadDriverTaskPhoto,
 };

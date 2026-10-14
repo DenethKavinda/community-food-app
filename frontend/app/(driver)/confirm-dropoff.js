@@ -24,6 +24,7 @@ export default function ConfirmDropoff() {
   const [cameraVisible, setCameraVisible] = useState(false);
   const [cameraRef, setCameraRef] = useState(null);
   const [photoTaken, setPhotoTaken] = useState(false);
+  const [photoUri, setPhotoUri] = useState(null);
 
   const [recentDeliveries, setRecentDeliveries] = useState([]);
 
@@ -52,19 +53,39 @@ const loadRecentDeliveries = async () => {
   // GOOGLE MAPS NAVIGATION
   // =========================
 
+
   const openGoogleMaps = async () => {
     const latitude = Number(params.destinationLatitude);
     const longitude = Number(params.destinationLongitude);
+    const address = String(params.destinationAddress || "").trim();
+    let destination = "";
 
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    const hasValidCoordinates =
+      params.destinationLatitude !== undefined &&
+      params.destinationLatitude !== null &&
+      String(params.destinationLatitude).trim() !== "" &&
+      params.destinationLongitude !== undefined &&
+      params.destinationLongitude !== null &&
+      String(params.destinationLongitude).trim() !== "" &&
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180 &&
+      !(latitude === 0 && longitude === 0);
+
+    if (hasValidCoordinates) {
+      destination = `${latitude},${longitude}`;
+    } else if (address) {
+      destination = address;
+    } else {
       Alert.alert(
         "Location Unavailable",
-        "The destination GPS location is not available."
+        "The destination address and GPS location are not available."
       );
       return;
     }
-
-    const destination = `${latitude},${longitude}`;
 
     const googleMapsUrl =
       `https://www.google.com/maps/dir/?api=1` +
@@ -72,26 +93,16 @@ const loadRecentDeliveries = async () => {
       `&travelmode=driving`;
 
     try {
-      const supported = await Linking.canOpenURL(googleMapsUrl);
-
-      if (!supported) {
-        Alert.alert(
-          "Google Maps Unavailable",
-          "Could not open Google Maps on this device."
-        );
-        return;
-      }
-
       await Linking.openURL(googleMapsUrl);
     } catch (error) {
       console.log("Google Maps error:", error);
-
       Alert.alert(
         "Navigation Error",
         "Could not open Google Maps navigation."
       );
     }
   };
+
 
   // =========================
   // CAMERA
@@ -121,6 +132,7 @@ const loadRecentDeliveries = async () => {
       const photo = await cameraRef.takePictureAsync();
 
       if (photo?.uri) {
+        setPhotoUri(photo.uri);
         setPhotoTaken(true);
         setCameraVisible(false);
       }
@@ -134,7 +146,7 @@ const loadRecentDeliveries = async () => {
   // =========================
 
   const confirmDropoff = async () => {
-    if (!photoTaken) {
+    if (!photoTaken || !photoUri) {
       Alert.alert(
         "Photo Required",
         "Please take a photo of the delivered food before confirming the drop-off."
@@ -143,6 +155,38 @@ const loadRecentDeliveries = async () => {
     }
 
     try {
+      // Step 1: Upload the drop-off photo
+      const formData = new FormData();
+
+      formData.append("photo", {
+        uri: photoUri,
+        name: "dropoff.jpg",
+        type: "image/jpeg",
+      });
+
+      formData.append("taskType", params.taskType || "");
+      formData.append("claimId", params.claimId || "");
+      formData.append("requestId", params.requestId || "");
+      formData.append("photoType", "DROPOFF");
+
+      const photoResponse = await API.post(
+        "/driver/upload-photo",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      if (!photoResponse.data?.success) {
+        throw new Error(
+          photoResponse.data?.message ||
+            "Drop-off photo upload failed."
+        );
+      }
+
+      // Step 2: Update delivery status
       const response = await API.patch("/driver/task-status", {
         taskType: params.taskType,
         claimId: params.claimId,
@@ -151,16 +195,15 @@ const loadRecentDeliveries = async () => {
       });
 
       if (!response.data?.success) {
-        Alert.alert(
-          "Delivery Error",
-          response.data?.message || "Could not update delivery status."
+        throw new Error(
+          response.data?.message ||
+            "Could not update delivery status."
         );
-        return;
       }
 
       Alert.alert(
         "Delivery Completed",
-        "The delivery has been successfully completed.",
+        "Delivery status and drop-off photo saved successfully.",
         [
           {
             text: "OK",
@@ -177,7 +220,8 @@ const loadRecentDeliveries = async () => {
       Alert.alert(
         "Delivery Error",
         error?.response?.data?.message ||
-          "Could not update the delivery status. Please try again."
+          error.message ||
+          "Could not complete delivery. Please try again."
       );
     }
   };
