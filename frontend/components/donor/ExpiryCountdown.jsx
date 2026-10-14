@@ -152,6 +152,15 @@ function getIndicatorTheme(remainingSeconds) {
 }
 
 /**
+ * Helper to check if an expiry window has already passed
+ */
+export function isDonationExpired(expiryWindowStr, createdAtStr) {
+  const targetDate = getExpiryDate(expiryWindowStr, createdAtStr);
+  if (!targetDate) return false;
+  return targetDate.getTime() <= Date.now();
+}
+
+/**
  * Smart Expiry Countdown Component (Donor Module ONLY)
  *
  * Props:
@@ -160,6 +169,7 @@ function getIndicatorTheme(remainingSeconds) {
  * - status: string ("Pending", "Active", "Expired", etc.)
  * - compact: boolean (optional, true for tight spaces)
  * - style: object (optional custom container style)
+ * - onExpire: function (optional callback triggered when timer reaches 0)
  */
 export default function ExpiryCountdown({
   expiryWindow,
@@ -167,15 +177,21 @@ export default function ExpiryCountdown({
   status = "Pending",
   compact = false,
   style,
+  onExpire,
 }) {
   // Rule 4: Show countdown only for eligible donations (Pending and Active).
-  // For Expired donations, display Expired indicator.
   // For Completed, Picked Up, or Cancelled, do not display active countdown.
   const isTerminalResolved = ["Completed", "Picked Up", "Cancelled"].includes(status);
   const isAlreadyExpired = status === "Expired";
   const isEligible = ["Pending", "Active"].includes(status);
 
   if (isTerminalResolved) {
+    return null;
+  }
+
+  // In compact (card) view, do not display a redundant "Expired" pill when the donation
+  // is already marked Expired, as the card's header status badge is the single source of truth.
+  if (compact && isAlreadyExpired) {
     return null;
   }
 
@@ -188,6 +204,8 @@ export default function ExpiryCountdown({
     return getRemainingSeconds(targetDate);
   });
 
+  const hasExpiredRef = React.useRef(false);
+
   useEffect(() => {
     if (!isEligible || !targetDate) {
       if (isAlreadyExpired) setRemainingSeconds(0);
@@ -195,7 +213,16 @@ export default function ExpiryCountdown({
     }
 
     // Initial sync
-    setRemainingSeconds(getRemainingSeconds(targetDate));
+    const initialRemaining = getRemainingSeconds(targetDate);
+    setRemainingSeconds(initialRemaining);
+
+    if (initialRemaining <= 0) {
+      if (!hasExpiredRef.current) {
+        hasExpiredRef.current = true;
+        onExpire?.();
+      }
+      return;
+    }
 
     // Update countdown every second
     const interval = setInterval(() => {
@@ -203,11 +230,21 @@ export default function ExpiryCountdown({
       setRemainingSeconds(remaining);
       if (remaining <= 0) {
         clearInterval(interval);
+        if (!hasExpiredRef.current) {
+          hasExpiredRef.current = true;
+          onExpire?.();
+        }
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isEligible, isAlreadyExpired, targetDate]);
+  }, [isEligible, isAlreadyExpired, targetDate, onExpire]);
+
+  // When time expires in compact (card) view, hide the countdown pill to prevent
+  // displaying two contradictory or duplicate status badges on the same card.
+  if (compact && remainingSeconds <= 0) {
+    return null;
+  }
 
   const theme = getIndicatorTheme(remainingSeconds);
   const formattedTime = formatCountdown(remainingSeconds);

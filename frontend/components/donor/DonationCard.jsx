@@ -1,12 +1,18 @@
 import React from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import ExpiryCountdown from "./ExpiryCountdown";
+import ExpiryCountdown, { isDonationExpired } from "./ExpiryCountdown";
 
-export default function DonationCard({ donation, onPress }) {
+export default function DonationCard({ donation, onPress, onExpire }) {
   const { title, quantity, location, status, image } = donation;
   const expiryWindow = donation.expiryWindow || donation.expiry_window || donation.raw?.expiry_window;
   const createdAt = donation.createdAt || donation.created_at || donation.raw?.created_at;
+
+  const isExpired = isDonationExpired(expiryWindow, createdAt);
+  const effectiveStatus =
+    isExpired && (status === "Pending" || status === "Active")
+      ? "Expired"
+      : status || "Pending";
 
   // Status badge styling helper
   const getStatusBadgeStyle = (status) => {
@@ -56,7 +62,7 @@ export default function DonationCard({ donation, onPress }) {
     }
   };
 
-  const statusStyle = getStatusBadgeStyle(status);
+  const statusStyle = getStatusBadgeStyle(effectiveStatus);
 
   return (
     <TouchableOpacity
@@ -86,8 +92,12 @@ export default function DonationCard({ donation, onPress }) {
 
         <View style={styles.infoRow}>
           <Ionicons name="pie-chart-outline" size={13} color="#087A3D" style={styles.icon} />
-          <Text style={[styles.infoText, { fontWeight: "700", color: donation.availableQuantity === 0 ? "#DC2626" : "#087A3D" }]} numberOfLines={1}>
-            Avail: {donation.availableQuantity === 0 ? "Fully Reserved" : `${donation.availableQuantity ?? quantity} ${donation.unit || ''}`}
+          <Text style={[styles.infoText, { fontWeight: "700", color: effectiveStatus === "Expired" || donation.availableQuantity === 0 ? "#DC2626" : "#087A3D" }]} numberOfLines={1}>
+            {effectiveStatus === "Expired"
+              ? "Expired Listing"
+              : donation.availableQuantity === 0
+              ? "Fully Reserved"
+              : `Avail: ${donation.availableQuantity ?? quantity} ${donation.unit || ''}`}
           </Text>
         </View>
 
@@ -96,13 +106,14 @@ export default function DonationCard({ donation, onPress }) {
           <Text style={styles.infoText}>{location}</Text>
         </View>
 
-        {status !== "Expired" && expiryWindow ? (
+        {effectiveStatus !== "Expired" && expiryWindow ? (
           <View style={styles.countdownRow}>
             <ExpiryCountdown
               expiryWindow={expiryWindow}
               createdAt={createdAt}
-              status={status}
+              status={effectiveStatus}
               compact={true}
+              onExpire={onExpire}
             />
           </View>
         ) : null}

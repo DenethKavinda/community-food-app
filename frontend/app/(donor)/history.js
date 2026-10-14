@@ -20,8 +20,8 @@ import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import EditDonationModal from "../../components/donor/EditDonationModal";
 import FeedbackModal from "../../components/common/FeedbackModal";
-import ExpiryCountdown from "../../components/donor/ExpiryCountdown";
-import { getMyDonations, deleteDonation } from "../../services/donorService";
+import ExpiryCountdown, { isDonationExpired } from "../../components/donor/ExpiryCountdown";
+import { getMyDonations, deleteDonation, updateDonationStatus } from "../../services/donorService";
 import { AuthContext } from "../../context/AuthContext";
 
 const getImageUrl = (url) => {
@@ -99,13 +99,25 @@ export default function DonationHistoryScreen() {
               : `${serverBaseUrl}${item.image_url}`;
           }
 
+          const expiryWindow = item.expiry_window || item.expiry;
+          const isExpired = isDonationExpired(expiryWindow, item.created_at);
+          const effectiveStatus =
+            isExpired && (item.status === "Pending" || item.status === "Active")
+              ? "Expired"
+              : item.status || "Pending";
+
+          // Sync backend asynchronously if expired locally
+          if (isExpired && (item.status === "Pending" || item.status === "Active")) {
+            updateDonationStatus(item.id, "Expired").catch(() => {});
+          }
+
           return {
             id: String(item.id),
             title: item.meal_name,
             quantity: formattedQty,
             originalQuantity: origQty,
             reservedQuantity: resQty,
-            availableQuantity: availQty,
+            availableQuantity: effectiveStatus === "Expired" ? 0 : availQty,
             unit: unit,
             location: item.location,
             expiry: item.expiry_window || "Today, 05:00 PM",
@@ -115,7 +127,7 @@ export default function DonationHistoryScreen() {
             date: item.created_at
               ? item.created_at.split("T")[0]
               : new Date().toISOString().split("T")[0],
-            status: item.status || "Pending",
+            status: effectiveStatus,
             image: img,
           };
         });
@@ -140,6 +152,20 @@ export default function DonationHistoryScreen() {
     const timer = setTimeout(fetchDonations, 0);
     return () => clearTimeout(timer);
   }, [fetchDonations]);
+
+  // Handle donation expiration in real time
+  const handleDonationExpired = useCallback((donationId) => {
+    setDonations((prev) =>
+      prev.map((item) =>
+        item.id === donationId
+          ? { ...item, status: "Expired", availableQuantity: 0 }
+          : item
+      )
+    );
+    updateDonationStatus(donationId, "Expired").catch((err) =>
+      console.warn("Could not sync donation expired status:", err.message)
+    );
+  }, []);
 
   // Handle Delete Donation
   const handleConfirmDelete = async () => {
@@ -438,13 +464,19 @@ export default function DonationHistoryScreen() {
                       <View style={styles.portionPillRow}>
                         <View style={[
                           styles.availablePill,
-                          item.availableQuantity === 0 && styles.fullyReservedPill
+                          item.availableQuantity === 0 && styles.fullyReservedPill,
+                          item.status === "Expired" && styles.expiredPill,
                         ]}>
                           <Text style={[
                             styles.availablePillText,
-                            item.availableQuantity === 0 && styles.fullyReservedPillText
+                            item.availableQuantity === 0 && styles.fullyReservedPillText,
+                            item.status === "Expired" && styles.expiredPillText,
                           ]}>
-                            {item.availableQuantity === 0 ? "Fully Reserved" : `${item.availableQuantity} ${item.unit} Available`}
+                            {item.status === "Expired"
+                              ? "Expired Listing"
+                              : item.availableQuantity === 0
+                              ? "Fully Reserved"
+                              : `${item.availableQuantity} ${item.unit} Available`}
                           </Text>
                         </View>
                         <Text style={styles.portionSubtext}>
@@ -473,6 +505,7 @@ export default function DonationHistoryScreen() {
                           createdAt={item.created_at}
                           status={item.status}
                           compact={true}
+                          onExpire={() => handleDonationExpired(item.id)}
                         />
                       ) : null}
                     </View>
@@ -1090,6 +1123,13 @@ const styles = StyleSheet.create({
   },
   fullyReservedPillText: {
     color: "#DC2626",
+  },
+  expiredPill: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
+  },
+  expiredPillText: {
+    color: "#64748B",
   },
   portionSubtext: {
     fontSize: 11,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import DonationCard from "./DonationCard";
+import { isDonationExpired } from "./ExpiryCountdown";
 import { getMyDonations } from "../../services/donorService";
 import API from "../../services/api";
 
@@ -36,16 +37,21 @@ export default function RecentDonations({ onSeeAllPress, onDonationPress }) {
               ? "ml"
               : rawUnit.charAt(0).toUpperCase() + rawUnit.slice(1);
 
+          const isExpired = isDonationExpired(item.expiry_window, item.created_at);
+          const effectiveStatus = (isExpired && (item.status === "Pending" || item.status === "Active"))
+            ? "Expired"
+            : (item.status || "Pending");
+
           return {
             id: String(item.id),
             title: item.meal_name || "Food Donation",
             quantity: `${origQty} ${unit}`,
             originalQuantity: origQty,
             reservedQuantity: resQty,
-            availableQuantity: availQty,
+            availableQuantity: effectiveStatus === "Expired" ? 0 : availQty,
             unit: unit,
             location: item.location || "Location Not Set",
-            status: item.status || "Pending",
+            status: effectiveStatus,
             image: getImageUrl(item.image_url),
             expiryWindow: item.expiry_window,
             createdAt: item.created_at,
@@ -100,6 +106,7 @@ export default function RecentDonations({ onSeeAllPress, onDonationPress }) {
               key={item.id}
               donation={item}
               onPress={() => onDonationPress && onDonationPress(item.raw)}
+              onExpire={loadRecent}
             />
           ))}
         </View>

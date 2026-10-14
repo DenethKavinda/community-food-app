@@ -613,7 +613,17 @@ exports.getAvailableDonations = async (req, res) => {
       reservedMap[r.donation_id] = (reservedMap[r.donation_id] || 0) + (parseInt(r.reserved) || 0);
     });
 
-    const enrichedDonations = donations.map(d => {
+    // Auto-update expired Pending and Active donations
+    for (let d of donations) {
+      if (isExpiryPassed(d.expiry_window, d.created_at)) {
+        d.status = "Expired";
+        pool.query("UPDATE donations SET status = 'Expired' WHERE id = ? AND status IN ('Pending', 'Active')", [d.id]).catch(() => {});
+      }
+    }
+
+    const activeDonations = donations.filter(d => d.status !== "Expired");
+
+    const enrichedDonations = activeDonations.map(d => {
       const originalQuantity = parseInt(d.quantity) || 0;
       const reserved = reservedMap[d.id] || 0;
       const available_portions = Math.max(0, originalQuantity - reserved);
