@@ -223,39 +223,48 @@ exports.createDonation = async (req, res) => {
   }
 };
 
-// Helper function to check if donation expiry date has passed
-function isExpiryPassed(expiryWindowStr, createdAtStr) {
-  if (!expiryWindowStr) return false;
-  const str = expiryWindowStr.trim();
+// Helper function to parse donation expiry date using original created_at
+function getParsedExpiryDate(expiryWindowStr, createdAtStr) {
+  if (!expiryWindowStr) return null;
+  const str = String(expiryWindowStr).trim();
   const now = new Date();
 
-  let targetDate = new Date();
+  let baseDate = now;
+  if (createdAtStr) {
+    const parsedBase = createdAtStr instanceof Date ? createdAtStr : new Date(createdAtStr);
+    if (!isNaN(parsedBase.getTime())) {
+      baseDate = parsedBase;
+    }
+  }
 
-  if (str.toLowerCase().startsWith("today")) {
-    targetDate = new Date();
-  } else if (str.toLowerCase().startsWith("yesterday")) {
-    return true; // Yesterday is always in the past
-  } else if (str.toLowerCase().startsWith("tomorrow")) {
-    targetDate = new Date();
+  let targetDate = new Date(baseDate);
+
+  const lower = str.toLowerCase();
+  if (lower.startsWith("today")) {
+    targetDate = new Date(baseDate);
+  } else if (lower.startsWith("yesterday")) {
+    targetDate = new Date(baseDate);
+    targetDate.setDate(targetDate.getDate() - 1);
+  } else if (lower.startsWith("tomorrow")) {
+    targetDate = new Date(baseDate);
     targetDate.setDate(targetDate.getDate() + 1);
-  } else if (str.toLowerCase().startsWith("in 2 days")) {
-    targetDate = new Date();
+  } else if (lower.startsWith("in 2 days")) {
+    targetDate = new Date(baseDate);
     targetDate.setDate(targetDate.getDate() + 2);
   } else {
     // Custom calendar date like "Oct 10, 09:00 PM"
-    // Extract the date part (before the comma) and append current year
     const datePart = str.split(",")[0].trim();
-    const withYear = `${datePart} ${now.getFullYear()}`;
+    const withYear = `${datePart} ${baseDate.getFullYear()}`;
     const parsed = new Date(withYear);
     if (!isNaN(parsed.getTime())) {
       targetDate = parsed;
     } else {
-      // Full direct fallback
       const fullParsed = new Date(str);
       if (!isNaN(fullParsed.getTime())) {
-        return fullParsed < now;
+        targetDate = fullParsed;
+      } else {
+        return null;
       }
-      return false;
     }
   }
 
@@ -270,13 +279,22 @@ function isExpiryPassed(expiryWindowStr, createdAtStr) {
     if (ampm === "AM" && hours === 12) hours = 0;
 
     targetDate.setHours(hours, minutes, 0, 0);
-    return targetDate < now;
+  } else {
+    // No time component found — treat end of day as expiry
+    targetDate.setHours(23, 59, 59, 999);
   }
 
-  // No time component found — treat end of day as expiry
-  targetDate.setHours(23, 59, 59, 999);
-  return targetDate < now;
+  return targetDate;
 }
+
+function isExpiryPassed(expiryWindowStr, createdAtStr) {
+  const targetDate = getParsedExpiryDate(expiryWindowStr, createdAtStr);
+  if (!targetDate) return false;
+  return targetDate < new Date();
+}
+
+exports.isExpiryPassed = isExpiryPassed;
+exports.getParsedExpiryDate = getParsedExpiryDate;
 
 // 2. GET DONATIONS (Logged-in Donor History or All Posts)
 exports.getDonorDonations = async (req, res) => {
@@ -309,12 +327,12 @@ exports.getDonorDonations = async (req, res) => {
 
     const [donations] = await pool.query(query, queryParams);
 
-    // Auto-update expired Pending donations
+    // Auto-update expired Pending and Active donations
     for (let d of donations) {
-      if (d.status === "Pending" && isExpiryPassed(d.expiry_window, d.created_at)) {
+      if ((d.status === "Pending" || d.status === "Active") && isExpiryPassed(d.expiry_window, d.created_at)) {
         d.status = "Expired";
         try {
-          await pool.query("UPDATE donations SET status = 'Expired' WHERE id = ?", [d.id]);
+          await pool.query("UPDATE donations SET status = 'Expired' WHERE id = ? AND status IN ('Pending', 'Active')", [d.id]);
         } catch (e) {
           console.warn(`Could not update donation ${d.id} to Expired:`, e.message);
         }
@@ -376,10 +394,10 @@ exports.getDonationById = async (req, res) => {
     }
 
     const d = donations[0];
-    if (d.status === "Pending" && isExpiryPassed(d.expiry_window, d.created_at)) {
+    if ((d.status === "Pending" || d.status === "Active") && isExpiryPassed(d.expiry_window, d.created_at)) {
       d.status = "Expired";
       try {
-        await pool.query("UPDATE donations SET status = 'Expired' WHERE id = ?", [d.id]);
+        await pool.query("UPDATE donations SET status = 'Expired' WHERE id = ? AND status IN ('Pending', 'Active')", [d.id]);
       } catch (e) {}
     }
 

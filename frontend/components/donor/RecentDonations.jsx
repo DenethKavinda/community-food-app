@@ -47,6 +47,8 @@ export default function RecentDonations({ onSeeAllPress, onDonationPress }) {
             location: item.location || "Location Not Set",
             status: item.status || "Pending",
             image: getImageUrl(item.image_url),
+            expiryWindow: item.expiry_window,
+            createdAt: item.created_at,
             raw: item,
           };
         });

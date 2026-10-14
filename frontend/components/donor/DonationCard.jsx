@@ -1,9 +1,12 @@
 import React from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import ExpiryCountdown from "./ExpiryCountdown";
 
 export default function DonationCard({ donation, onPress }) {
   const { title, quantity, location, status, image } = donation;
+  const expiryWindow = donation.expiryWindow || donation.expiry_window || donation.raw?.expiry_window;
+  const createdAt = donation.createdAt || donation.created_at || donation.raw?.created_at;
 
   // Status badge styling helper
   const getStatusBadgeStyle = (status) => {
@@ -65,8 +68,7 @@ export default function DonationCard({ donation, onPress }) {
         <Image source={{ uri: image }} style={styles.image} resizeMode="cover" />
       ) : (
         <View style={styles.noImagePlaceholder}>
-          <Ionicons name="camera-outline" size={18} color="#9CA3AF" />
-          <Text style={styles.noImageText}>No Image</Text>
+          <MaterialCommunityIcons name="food-variant" size={24} color="#059669" />
         </View>
       )}
 
@@ -93,6 +95,17 @@ export default function DonationCard({ donation, onPress }) {
           <Ionicons name="location-outline" size={13} color="#6B7280" style={styles.icon} />
           <Text style={styles.infoText}>{location}</Text>
         </View>
+
+        {status !== "Expired" && expiryWindow ? (
+          <View style={styles.countdownRow}>
+            <ExpiryCountdown
+              expiryWindow={expiryWindow}
+              createdAt={createdAt}
+              status={status}
+              compact={true}
+            />
+          </View>
+        ) : null}
       </View>
 
       <View style={[styles.statusBadge, statusStyle.badge]}>
@@ -153,28 +166,27 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 12,
     right: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "transparent",
   },
   statusText: {
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   noImagePlaceholder: {
     width: 64,
     height: 64,
-    borderRadius: 12,
-    backgroundColor: "#F3F4F6",
+    borderRadius: 14,
+    backgroundColor: "#F0FDF4",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: "#DCFCE7",
   },
-  noImageText: {
-    fontSize: 9,
-    color: "#9CA3AF",
-    marginTop: 2,
-    fontWeight: "500",
+  countdownRow: {
+    marginTop: 5,
   },
 });
