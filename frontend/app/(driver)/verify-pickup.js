@@ -144,11 +144,11 @@ export default function VerifyPickup() {
 
   const handleConfirmPickup = async () => {
     if (!allChecked) {
-        Alert.alert(
+      Alert.alert(
         "Verification Required",
         "Please complete all checklist items before confirming pickup."
-        );
-        return;
+      );
+      return;
     }
 
     try {
@@ -160,7 +160,40 @@ export default function VerifyPickup() {
       });
 
       if (!response.data?.success) {
-        throw new Error(response.data?.message || "Could not update pickup status.");
+        throw new Error(
+          response.data?.message || "Could not update pickup status."
+        );
+      }
+
+      if (photoUri) {
+        const formData = new FormData();
+
+        formData.append("photo", {
+          uri: photoUri,
+          name: "pickup.jpg",
+          type: "image/jpeg",
+        });
+
+        formData.append("taskType", params.taskType || "");
+        formData.append("claimId", params.claimId || "");
+        formData.append("requestId", params.requestId || "");
+        formData.append("photoType", "PICKUP");
+
+        const photoResponse = await API.post(
+          "/driver/upload-photo",
+          formData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          }
+        );
+
+        if (!photoResponse.data?.success) {
+          throw new Error(
+            photoResponse.data?.message || "Pickup photo upload failed."
+          );
+        }
       }
 
       router.push({
@@ -177,10 +210,13 @@ export default function VerifyPickup() {
     } catch (error) {
       Alert.alert(
         "Pickup Error",
-        error?.response?.data?.message || error.message || "Could not confirm pickup."
+        error?.response?.data?.message ||
+          error.message ||
+          "Could not confirm pickup."
       );
     }
   };
+
 
   // =====================================================
   // CAMERA SCREEN
