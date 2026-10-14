@@ -20,7 +20,8 @@ import DonorHeader from "../../components/donor/DonorHeader";
 import DonorBottomNav from "../../components/donor/DonorBottomNav";
 import EditDonationModal from "../../components/donor/EditDonationModal";
 import FeedbackModal from "../../components/common/FeedbackModal";
-import { getMyDonations, deleteDonation } from "../../services/donorService";
+import ExpiryCountdown, { isDonationExpired } from "../../components/donor/ExpiryCountdown";
+import { getMyDonations, deleteDonation, updateDonationStatus } from "../../services/donorService";
 import { AuthContext } from "../../context/AuthContext";
 
 const getImageUrl = (url) => {
@@ -98,21 +99,35 @@ export default function DonationHistoryScreen() {
               : `${serverBaseUrl}${item.image_url}`;
           }
 
+          const expiryWindow = item.expiry_window || item.expiry;
+          const isExpired = isDonationExpired(expiryWindow, item.created_at);
+          const effectiveStatus =
+            isExpired && (item.status === "Pending" || item.status === "Active")
+              ? "Expired"
+              : item.status || "Pending";
+
+          // Sync backend asynchronously if expired locally
+          if (isExpired && (item.status === "Pending" || item.status === "Active")) {
+            updateDonationStatus(item.id, "Expired").catch(() => {});
+          }
+
           return {
             id: String(item.id),
             title: item.meal_name,
             quantity: formattedQty,
             originalQuantity: origQty,
             reservedQuantity: resQty,
-            availableQuantity: availQty,
+            availableQuantity: effectiveStatus === "Expired" ? 0 : availQty,
             unit: unit,
             location: item.location,
             expiry: item.expiry_window || "Today, 05:00 PM",
+            expiry_window: item.expiry_window,
+            created_at: item.created_at,
             notes: item.notes || "None provided",
             date: item.created_at
               ? item.created_at.split("T")[0]
               : new Date().toISOString().split("T")[0],
-            status: item.status || "Pending",
+            status: effectiveStatus,
             image: img,
           };
         });
@@ -137,6 +152,20 @@ export default function DonationHistoryScreen() {
     const timer = setTimeout(fetchDonations, 0);
     return () => clearTimeout(timer);
   }, [fetchDonations]);
+
+  // Handle donation expiration in real time
+  const handleDonationExpired = useCallback((donationId) => {
+    setDonations((prev) =>
+      prev.map((item) =>
+        item.id === donationId
+          ? { ...item, status: "Expired", availableQuantity: 0 }
+          : item
+      )
+    );
+    updateDonationStatus(donationId, "Expired").catch((err) =>
+      console.warn("Could not sync donation expired status:", err.message)
+    );
+  }, []);
 
   // Handle Delete Donation
   const handleConfirmDelete = async () => {
@@ -172,9 +201,11 @@ export default function DonationHistoryScreen() {
   };
 
   // Filter items based on active tab
+  // 1. Recent Posts: Active donations only (Pending, Active)
+  // 2. History: Closed donations only (Completed, Picked Up, Cancelled, Expired)
   const displayedItems =
     activeTab === "Recent Posts"
-      ? donations
+      ? donations.filter((item) => ["Pending", "Active"].includes(item.status))
       : donations.filter((item) =>
           [
             "Completed",
@@ -362,17 +393,24 @@ export default function DonationHistoryScreen() {
                 size={48}
                 color="#9CA3AF"
               />
-              <Text style={styles.emptyTitle}>No donations found</Text>
-              <Text style={styles.emptySubtitle}>
-                Create a donation post to share surplus food with local food
-                banks & volunteers.
+              <Text style={styles.emptyTitle}>
+                {activeTab === "Recent Posts"
+                  ? "No active donations"
+                  : "No donation history"}
               </Text>
-              <TouchableOpacity
-                style={styles.donateNowBtn}
-                onPress={() => router.push("/(donor)/donate")}
-              >
-                <Text style={styles.donateNowText}>+ Donate Food Now</Text>
-              </TouchableOpacity>
+              <Text style={styles.emptySubtitle}>
+                {activeTab === "Recent Posts"
+                  ? "You have no live donation posts currently available or reserved."
+                  : "Completed, picked up, expired, or cancelled donations will appear here."}
+              </Text>
+              {activeTab === "Recent Posts" ? (
+                <TouchableOpacity
+                  style={styles.donateNowBtn}
+                  onPress={() => router.push("/(donor)/donate")}
+                >
+                  <Text style={styles.donateNowText}>+ Donate Food Now</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : (
             <View style={styles.cardsList}>
@@ -380,114 +418,123 @@ export default function DonationHistoryScreen() {
                 <TouchableOpacity
                   key={item.id}
                   style={styles.card}
-                  activeOpacity={0.85}
+                  activeOpacity={0.88}
                   onPress={() => setSelectedDonation(item)}
                 >
-                  {item.image ? (
-                    <Image
-                      source={{ uri: item.image }}
-                      style={styles.cardImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.noImageCardPlaceholder}>
-                      <Ionicons name="camera-outline" size={20} color="#9CA3AF" />
-                      <Text style={styles.noImageCardText}>No Image</Text>
-                    </View>
-                  )}
-
-                  <View style={styles.cardInfo}>
-                    <Text style={styles.cardTitle} numberOfLines={1}>
-                      {item.title}
-                    </Text>
-
-                    <View style={styles.metaRow}>
-                      <Ionicons
-                        name="location-outline"
-                        size={12}
-                        color="#6B7280"
-                        style={{ marginRight: 2 }}
-                      />
-                      <Text style={styles.locationText} numberOfLines={1}>
-                        {item.location}
+                  {/* Top Bar: Title, Location & Status Badge */}
+                  <View style={styles.cardHeaderRow}>
+                    <View style={styles.cardHeaderLeft}>
+                      <Text style={styles.cardTitle} numberOfLines={1}>
+                        {item.title}
                       </Text>
-                    </View>
-
-                    {/* Quantity Breakdown Box */}
-                    <View style={styles.qtyBreakdownBox}>
-                      <View style={styles.qtyMetricsRow}>
-                        <View style={styles.qtyMetricChip}>
-                          <Text style={styles.qtyLabelText}>Original: </Text>
-                          <Text style={styles.qtyValText}>{item.originalQuantity} {item.unit}</Text>
-                        </View>
-                        <View style={styles.qtyMetricChip}>
-                          <Text style={styles.qtyLabelText}>Reserved: </Text>
-                          <Text style={styles.qtyValText}>{item.reservedQuantity} {item.unit}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.qtyAvailRow}>
-                        <Text style={styles.qtyAvailLabelText}>Available: </Text>
-                        {item.availableQuantity === 0 ? (
-                          <Text style={styles.fullyReservedBadge}>Fully Reserved</Text>
-                        ) : (
-                          <Text style={styles.availableHighlightVal}>{item.availableQuantity} {item.unit}</Text>
-                        )}
+                      <View style={styles.metaRow}>
+                        <Ionicons
+                          name="location-outline"
+                          size={12}
+                          color="#64748B"
+                          style={{ marginRight: 3 }}
+                        />
+                        <Text style={styles.locationText} numberOfLines={1}>
+                          {item.location}
+                        </Text>
                       </View>
                     </View>
 
-                    <View style={styles.dateRow}>
-                      <Ionicons
-                        name="calendar-outline"
-                        size={12}
-                        color="#6B7280"
-                        style={{ marginRight: 4 }}
-                      />
-                      <Text style={styles.dateText}>{item.date}</Text>
+                    <View style={styles.cardHeaderRight}>
+                      {renderStatusBadge(item.status)}
                     </View>
                   </View>
 
-                  <View style={styles.rightActionColumn}>
-                    {renderStatusBadge(item.status)}
+                  {/* Card Main Body */}
+                  <View style={styles.cardContentRow}>
+                    {item.image ? (
+                      <Image
+                        source={{ uri: item.image }}
+                        style={styles.cardImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.noImageCardPlaceholder}>
+                        <MaterialCommunityIcons name="food-variant" size={26} color="#059669" />
+                      </View>
+                    )}
 
+                    <View style={styles.cardDetailsBox}>
+                      {/* Portion Metric Pill */}
+                      <View style={styles.portionPillRow}>
+                        <View style={[
+                          styles.availablePill,
+                          item.availableQuantity === 0 && styles.fullyReservedPill,
+                          item.status === "Expired" && styles.expiredPill,
+                        ]}>
+                          <Text style={[
+                            styles.availablePillText,
+                            item.availableQuantity === 0 && styles.fullyReservedPillText,
+                            item.status === "Expired" && styles.expiredPillText,
+                          ]}>
+                            {item.status === "Expired"
+                              ? "Expired Listing"
+                              : item.availableQuantity === 0
+                              ? "Fully Reserved"
+                              : `${item.availableQuantity} ${item.unit} Available`}
+                          </Text>
+                        </View>
+                        <Text style={styles.portionSubtext}>
+                          Orig: {item.originalQuantity} • Res: {item.reservedQuantity}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Card Bottom Row: Date & Countdown on Left, Action Buttons on Right */}
+                  <View style={styles.cardFooterRow}>
+                    <View style={styles.footerLeft}>
+                      <View style={styles.dateRow}>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={12}
+                          color="#94A3B8"
+                          style={{ marginRight: 4 }}
+                        />
+                        <Text style={styles.dateText}>{item.date}</Text>
+                      </View>
+
+                      {(item.status === "Pending" || item.status === "Active") && (item.expiry_window || item.expiry) ? (
+                        <ExpiryCountdown
+                          expiryWindow={item.expiry_window || item.expiry}
+                          createdAt={item.created_at}
+                          status={item.status}
+                          compact={true}
+                          onExpire={() => handleDonationExpired(item.id)}
+                        />
+                      ) : null}
+                    </View>
+
+                    {/* Horizontal Action Buttons */}
                     <View style={styles.actionButtonsRow}>
                       <TouchableOpacity
-                        style={styles.viewIconBtn}
+                        style={styles.actionBtnView}
                         onPress={() => setSelectedDonation(item)}
                         activeOpacity={0.7}
                       >
-                        <Ionicons
-                          name="eye-outline"
-                          size={16}
-                          color="#087A3D"
-                        />
+                        <Ionicons name="eye-outline" size={16} color="#059669" />
                       </TouchableOpacity>
 
                       {item.status === "Pending" ? (
                         <TouchableOpacity
-                          style={[
-                            styles.viewIconBtn,
-                            { backgroundColor: "#F0FDF4", borderColor: "#DCFCE7" },
-                          ]}
+                          style={styles.actionBtnEdit}
                           onPress={() => setEditingDonation(item)}
                           activeOpacity={0.7}
                         >
-                          <Ionicons
-                            name="create-outline"
-                            size={16}
-                            color="#087A3D"
-                          />
+                          <Ionicons name="create-outline" size={16} color="#087A3D" />
                         </TouchableOpacity>
                       ) : (
                         <TouchableOpacity
-                          style={styles.deleteIconBtn}
+                          style={styles.actionBtnDelete}
                           onPress={() => setDeletingDonation(item)}
                           activeOpacity={0.7}
                         >
-                          <Ionicons
-                            name="trash-outline"
-                            size={16}
-                            color="#DC2626"
-                          />
+                          <Ionicons name="trash-outline" size={16} color="#EF4444" />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -544,38 +591,78 @@ export default function DonationHistoryScreen() {
                 </View>
 
                 <View style={styles.detailsGrid}>
-                  {/* Quantity & Availability Card (Full Width) */}
-                  <View style={[styles.detailCard, { width: "100%", backgroundColor: "#F8FAFC", borderColor: "#E2E8F0" }]}>
-                    <MaterialCommunityIcons
-                      name="silverware-fork-knife"
-                      size={20}
-                      color="#087A3D"
-                      style={{ marginTop: 2 }}
-                    />
-                    <View style={styles.detailTextBox}>
-                      <Text style={styles.detailLabel}>Quantity & Availability</Text>
-                      <View style={styles.qtyTableContainer}>
-                        {/* Row 1: Original Quantity */}
-                        <View style={styles.qtyTableRow}>
-                          <Text style={styles.qtyTableLabel}>Original Quantity</Text>
-                          <Text style={styles.qtyTableValue}>{selectedDonation.originalQuantity} {selectedDonation.unit}</Text>
-                        </View>
-                        {/* Row 2: Reserved Quantity */}
-                        <View style={styles.qtyTableRow}>
-                          <Text style={styles.qtyTableLabel}>Reserved Quantity</Text>
-                          <Text style={styles.qtyTableValue}>{selectedDonation.reservedQuantity} {selectedDonation.unit}</Text>
-                        </View>
-                        {/* Row 3: Available Quantity */}
-                        <View style={[styles.qtyTableRow, { borderBottomWidth: 0 }]}>
-                          <Text style={styles.qtyTableLabel}>Available Quantity</Text>
-                          {selectedDonation.availableQuantity === 0 ? (
-                            <Text style={styles.fullyReservedText}>Fully Reserved</Text>
-                          ) : (
-                            <Text style={styles.availableHighlightText}>
-                              {selectedDonation.availableQuantity} {selectedDonation.unit}
-                            </Text>
-                          )}
-                        </View>
+                  {/* Modern Portion Breakdown Card */}
+                  <View style={styles.modernQtyCard}>
+                    <View style={styles.modernQtyHeader}>
+                      <View style={styles.qtyHeaderIconBox}>
+                        <MaterialCommunityIcons
+                          name="silverware-fork-knife"
+                          size={15}
+                          color="#059669"
+                        />
+                      </View>
+                      <Text style={styles.modernQtyTitle}>Portion Breakdown</Text>
+                    </View>
+
+                    {/* 3 Modern Stat Cards */}
+                    <View style={styles.metricStatsRow}>
+                      {/* Metric 1: Original */}
+                      <View style={styles.metricCard}>
+                        <Text style={styles.metricCardValue}>
+                          {selectedDonation.originalQuantity}
+                        </Text>
+                        <Text style={styles.metricCardUnit}>{selectedDonation.unit}</Text>
+                        <Text style={styles.metricCardLabel}>Original</Text>
+                      </View>
+
+                      {/* Metric 2: Reserved */}
+                      <View style={[styles.metricCard, styles.metricCardReserved]}>
+                        <Text style={[styles.metricCardValue, styles.reservedValColor]}>
+                          {selectedDonation.reservedQuantity}
+                        </Text>
+                        <Text style={styles.metricCardUnit}>{selectedDonation.unit}</Text>
+                        <Text style={styles.metricCardLabel}>Reserved</Text>
+                      </View>
+
+                      {/* Metric 3: Available */}
+                      <View
+                        style={[
+                          styles.metricCard,
+                          selectedDonation.availableQuantity === 0
+                            ? styles.metricCardFullyReserved
+                            : styles.metricCardAvailable,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.metricCardValue,
+                            selectedDonation.availableQuantity === 0
+                              ? styles.fullyReservedValColor
+                              : styles.availableValColor,
+                          ]}
+                        >
+                          {selectedDonation.availableQuantity}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.metricCardUnit,
+                            selectedDonation.availableQuantity === 0
+                              ? styles.fullyReservedUnitColor
+                              : styles.availableUnitColor,
+                          ]}
+                        >
+                          {selectedDonation.unit}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.metricCardLabel,
+                            selectedDonation.availableQuantity === 0
+                              ? styles.fullyReservedLabelColor
+                              : styles.availableLabelColor,
+                          ]}
+                        >
+                          {selectedDonation.availableQuantity === 0 ? "Exhausted" : "Available"}
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -603,6 +690,16 @@ export default function DonationHistoryScreen() {
                       <Text style={styles.detailValue}>
                         {selectedDonation.expiry}
                       </Text>
+                      {(selectedDonation.expiry_window || selectedDonation.expiry) ? (
+                        <View style={{ marginTop: 6 }}>
+                          <ExpiryCountdown
+                            expiryWindow={selectedDonation.expiry_window || selectedDonation.expiry}
+                            createdAt={selectedDonation.created_at}
+                            status={selectedDonation.status}
+                            compact={false}
+                          />
+                        </View>
+                      ) : null}
                     </View>
                   </View>
 
@@ -935,92 +1032,165 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 18,
+    padding: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    elevation: 1,
+    borderColor: "#F1F5F9",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    marginBottom: 10,
   },
-  cardImage: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
-    backgroundColor: "#E5E7EB",
+  cardHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 10,
   },
-  cardInfo: {
+  cardHeaderLeft: {
     flex: 1,
-    marginLeft: 12,
-    justifyContent: "center",
+    marginRight: 10,
   },
   cardTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
-    marginBottom: 3,
+    color: "#0F172A",
+    marginBottom: 2,
+    letterSpacing: -0.2,
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 4,
-  },
-  quantityText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#374151",
-  },
-  quantityTextActive: {
-    color: "#087A3D",
-  },
-  bulletDot: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    marginHorizontal: 5,
   },
   locationText: {
-    fontSize: 12.5,
-    color: "#6B7280",
+    fontSize: 12,
+    color: "#64748B",
     flex: 1,
+  },
+  cardHeaderRight: {
+    alignItems: "flex-end",
+  },
+  cardContentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  cardImage: {
+    width: 66,
+    height: 66,
+    borderRadius: 14,
+    backgroundColor: "#E2E8F0",
+  },
+  noImageCardPlaceholder: {
+    width: 66,
+    height: 66,
+    borderRadius: 14,
+    backgroundColor: "#F0FDF4",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#DCFCE7",
+  },
+  cardDetailsBox: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+    justifyContent: "center",
+  },
+  portionPillRow: {
+    marginBottom: 6,
+  },
+  availablePill: {
+    alignSelf: "flex-start",
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    marginBottom: 3,
+  },
+  availablePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#059669",
+  },
+  fullyReservedPill: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  fullyReservedPillText: {
+    color: "#DC2626",
+  },
+  expiredPill: {
+    backgroundColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
+  },
+  expiredPillText: {
+    color: "#64748B",
+  },
+  portionSubtext: {
+    fontSize: 11,
+    color: "#64748B",
+    fontWeight: "500",
+  },
+  cardFooterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+  footerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    flex: 1,
+    marginRight: 10,
   },
   dateRow: {
     flexDirection: "row",
     alignItems: "center",
   },
   dateText: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  rightActionColumn: {
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    height: 60,
-    paddingVertical: 2,
-    marginLeft: 6,
+    fontSize: 11,
+    color: "#94A3B8",
+    fontWeight: "500",
   },
   actionButtonsRow: {
     flexDirection: "row",
-    gap: 6,
+    alignItems: "center",
+    gap: 8,
   },
-  viewIconBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
+  actionBtnView: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     backgroundColor: "#F0FDF4",
     borderWidth: 1,
     borderColor: "#DCFCE7",
     alignItems: "center",
     justifyContent: "center",
   },
-  deleteIconBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
+  actionBtnEdit: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#DCFCE7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBtnDelete: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     backgroundColor: "#FEF2F2",
     borderWidth: 1,
     borderColor: "#FEE2E2",
@@ -1030,64 +1200,71 @@ const styles = StyleSheet.create({
   badgeBase: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   badgePending: {
-    backgroundColor: "#FEF3C7",
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FDE68A",
   },
   textPending: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: "700",
     color: "#D97706",
   },
   badgeActive: {
-    backgroundColor: "#DCFCE7",
+    backgroundColor: "#ECFDF5",
+    borderColor: "#A7F3D0",
   },
   activeDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: "#087A3D",
+    backgroundColor: "#059669",
     marginRight: 4,
   },
   textActive: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#087A3D",
+    color: "#059669",
   },
   badgePickedUp: {
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
   },
   textPickedUp: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: "600",
-    color: "#4B5563",
+    color: "#475569",
   },
   badgeCompleted: {
-    backgroundColor: "#E8F8EE",
+    backgroundColor: "#ECFDF5",
+    borderColor: "#A7F3D0",
   },
   textCompleted: {
-    fontSize: 11.5,
-    fontWeight: "600",
-    color: "#087A3D",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#059669",
   },
   badgeCancelled: {
     backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
   },
   textCancelled: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: "700",
     color: "#DC2626",
   },
   badgeExpired: {
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#F1F5F9",
+    borderColor: "#E2E8F0",
   },
   textExpired: {
-    fontSize: 11.5,
-    fontWeight: "600",
-    color: "#6B7280",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#64748B",
   },
   readOnlyNoteBox: {
     flex: 1,
@@ -1352,42 +1529,107 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#DC2626",
   },
-  qtyTableContainer: {
-    marginTop: 8,
+  modernQtyCard: {
+    width: "100%",
     backgroundColor: "#FFFFFF",
-    borderRadius: 10,
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    borderColor: "#F1F5F9",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+    marginBottom: 6,
   },
-  qtyTableRow: {
+  modernQtyHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    marginBottom: 12,
   },
-  qtyTableLabel: {
-    fontSize: 13,
-    color: "#475569",
-    fontWeight: "500",
+  qtyHeaderIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "#ECFDF5",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
   },
-  qtyTableValue: {
+  modernQtyTitle: {
     fontSize: 13.5,
-    color: "#1E293B",
     fontWeight: "700",
+    color: "#0F172A",
+    letterSpacing: -0.2,
   },
-  availableHighlightText: {
-    fontSize: 13.5,
-    color: "#087A3D",
+  metricStatsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+  metricCardReserved: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#F1F5F9",
+  },
+  metricCardAvailable: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#A7F3D0",
+  },
+  metricCardFullyReserved: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  metricCardValue: {
+    fontSize: 18,
     fontWeight: "800",
+    color: "#0F172A",
+    lineHeight: 22,
   },
-  fullyReservedText: {
-    fontSize: 13.5,
+  reservedValColor: {
+    color: "#475569",
+  },
+  availableValColor: {
+    color: "#059669",
+  },
+  fullyReservedValColor: {
     color: "#DC2626",
-    fontWeight: "800",
+  },
+  metricCardUnit: {
+    fontSize: 10.5,
+    fontWeight: "600",
+    color: "#64748B",
+    marginTop: 1,
+    marginBottom: 3,
+  },
+  availableUnitColor: {
+    color: "#059669",
+  },
+  fullyReservedUnitColor: {
+    color: "#DC2626",
+  },
+  metricCardLabel: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: "#64748B",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+  availableLabelColor: {
+    color: "#059669",
+  },
+  fullyReservedLabelColor: {
+    color: "#DC2626",
   },
   noImageCardPlaceholder: {
     width: 80,
